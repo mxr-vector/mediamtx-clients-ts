@@ -1,102 +1,65 @@
-<!-- 
-  ExampleDashboard.vue
-  综合演示：Socket.io 实时状态 + 多路 WebRTC 视频流
--->
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted } from "vue";
-import { useSocket } from "../composables/WebRTC/useSocket";
-import { createSocketSignaling } from "../composables/WebRTC/webrtc";
-import { useMultiWebRTC } from "../composables/WebRTC/useWebRTC";
+import { computed } from "vue";
+import {
+  buildMediaMtxWhepUrl,
+  getMediaMtxConfig,
+  useMediaMtxReceivers,
+  type MediaMtxStreamConfig,
+} from "../composables/mediamtx";
 
-// ── 1. Socket 连接 ──────────────────────────────────────────────────────────
-// 定义服务器推送的事件类型（按需扩展）
-interface ServerEvents {
-  ai_status: { taskId: string; label: string; confidence: number };
-  alarm: { level: "warn" | "error"; message: string };
-}
+const mediaMtxConfig = getMediaMtxConfig();
 
-// 订阅 AI 识别状态推送
-const logs = ref<string[]>([]);
+const cameraConfigs: MediaMtxStreamConfig[] = mediaMtxConfig.streamPaths.map((path, index) => ({
+  id: path,
+  path,
+  label: `CAM-${String(index + 1).padStart(2, "0")} ${path}`,
+}));
 
-const {
-  status: socketStatus,
-  client,
-  emit,
-} = useSocket<ServerEvents>({
-  url: import.meta.env.VITE_SERVER_URL ?? "http://localhost:3000",
-  instanceName: "main", // 跨组件单例复用
-  autoConnect: true,
-  autoDisconnect: false, // 具名单例不自动断开
-  heartbeatInterval: 25_000,
-  listeners: {
-    ai_status({ taskId, label, confidence }) {
-      logs.value.unshift(`[${taskId}] ${label} (${(confidence * 100).toFixed(1)}%)`);
-      if (logs.value.length > 50) logs.value.length = 50;
-    },
-    alarm({ level, message }) {
-      logs.value.unshift(`[${level.toUpperCase()}] ${message}`);
-    },
-  },
-});
+const { entries, attach, restart } = useMediaMtxReceivers(cameraConfigs);
 
-const queueSize = ref(0);
-const queueSizeTimer = window.setInterval(() => {
-  queueSize.value = client.getQueueSize();
-}, 1000);
+const endpointPreview = computed(() => buildMediaMtxWhepUrl({ path: mediaMtxConfig.defaultPath }));
+const entriesList = computed(() => Array.from(entries.value.values()));
 
-// ── 2. 信令通道（复用同一个 Socket 连接） ───────────────────────────────────
-const signaling = createSocketSignaling(client, "webrtc_signal", "webrtc_signal");
-
-// ── 3. 多路 WebRTC ──────────────────────────────────────────────────────────
-const cameraConfigs = [
-  { taskId: "cam-front", label: "CAM-01 正面", signaling },
-  { taskId: "cam-rear", label: "CAM-02 背面", signaling },
-  { taskId: "cam-side", label: "CAM-03 侧面", signaling },
-];
-
-const { streams, attach, restart } = useMultiWebRTC(cameraConfigs, {
-  maxRetry: 20,
-  heartbeatInterval: 15_000,
-  rtcConfig: {
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-  },
-});
-
-// ── 4. video 元素挂载时绑定播放器 ───────────────────────────────────────────
-// 使用 Set 避免 v-for 中 ref 多次调用时重复 attach
 const attached = new Set<string>();
-function onVideoMounted(taskId: string, el: HTMLVideoElement | null) {
-  if (el && !attached.has(taskId)) {
-    attached.add(taskId);
-    attach(taskId, el);
+function onVideoMounted(id: string, el: HTMLVideoElement | null) {
+  if (el && !attached.has(id)) {
+    attached.add(id);
+    attach(id, el);
   }
 }
-
-// ── 5. 示例：向服务器发送心跳业务消息 ───────────────────────────────────────
-onMounted(() => {
-  emit("client_ready", { version: "1.0.0" });
-});
-
-onUnmounted(() => {
-  window.clearInterval(queueSizeTimer);
-});
 </script>
 
 <template>
-  <div class="dashboard">
-    <!-- Socket 状态指示 -->
-    <div class="status-bar">
-      <span class="dot" :class="socketStatus" />
-      <span>Socket: {{ socketStatus }}</span>
-      <span class="sep">|</span>
-      <span>消息队列: {{ queueSize }}</span>
-    </div>
+  <main class="dashboard">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">MediaMTX WebRTC Receiver</p>
+        <h1>RTSP 实时视频监控测试端</h1>
+        <p class="description">
+          通过 MediaMTX 的 WebRTC/WHEP 读流接口接收 RTSP 转 WebRTC 视频，不依赖自建 WebSocket 信令服务器。
+        </p>
+      </div>
 
-    <!-- 多路视频区域 -->
-    <div class="video-grid">
-      <div v-for="cfg in cameraConfigs" :key="cfg.taskId" class="video-card">
+      <dl class="config-panel">
+        <div>
+          <dt>MediaMTX</dt>
+          <dd>{{ mediaMtxConfig.protocol }}://{{ mediaMtxConfig.host }}:{{ mediaMtxConfig.port }}</dd>
+        </div>
+        <div>
+          <dt>默认流</dt>
+          <dd>{{ mediaMtxConfig.defaultPath }}</dd>
+        </div>
+        <div>
+          <dt>WHEP Endpoint</dt>
+          <dd>{{ endpointPreview }}</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="video-grid">
+      <article v-for="entry in entriesList" :key="entry.id" class="video-card">
         <video
-          :ref="(el) => onVideoMounted(cfg.taskId, el as HTMLVideoElement)"
+          :ref="(el) => onVideoMounted(entry.id, el as HTMLVideoElement | null)"
           autoplay
           muted
           playsinline
@@ -105,181 +68,197 @@ onUnmounted(() => {
         />
 
         <div class="video-overlay">
-          <span class="cam-label">{{ cfg.label }}</span>
-          <span class="rtc-badge" :class="streams.get(cfg.taskId)?.status">
-            {{ streams.get(cfg.taskId)?.status ?? "idle" }}
-          </span>
+          <div>
+            <strong>{{ entry.label }}</strong>
+            <span>path: {{ entry.path }}</span>
+          </div>
+          <span class="rtc-badge" :class="entry.status">{{ entry.status }}</span>
         </div>
 
-        <button class="btn-restart" @click="restart(cfg.taskId)">↺ 重连</button>
-      </div>
-    </div>
-
-    <!-- 实时事件日志 -->
-    <ul class="event-log">
-      <li v-for="(log, i) in logs" :key="i">{{ log }}</li>
-    </ul>
-  </div>
+        <p v-if="entry.error" class="error-message">{{ entry.error.message }}</p>
+        <button class="btn-restart" type="button" @click="restart(entry.id)">↺ 重连</button>
+      </article>
+    </section>
+  </main>
 </template>
 
 <style scoped>
 .dashboard {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 16px;
-  background: #0d1117;
   min-height: 100vh;
+  padding: 24px;
   color: #e6edf3;
-  font-family: "JetBrains Mono", monospace;
+  background: #0d1117;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
-.status-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  padding: 8px 12px;
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 520px);
+  gap: 24px;
+  align-items: stretch;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #58a6ff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: clamp(28px, 5vw, 48px);
+}
+
+.description {
+  max-width: 760px;
+  margin: 0;
+  color: #8b949e;
+  line-height: 1.7;
+}
+
+.config-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 16px;
   background: #161b22;
-  border-radius: 6px;
   border: 1px solid #30363d;
+  border-radius: 12px;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #6e7681;
-  flex-shrink: 0;
-}
-.dot.connected {
-  background: #3fb950;
-  box-shadow: 0 0 6px #3fb950;
-}
-.dot.connecting,
-.dot.reconnecting {
-  background: #d29922;
-  animation: blink 1s infinite;
-}
-.dot.error,
-.dot.disconnected {
-  background: #f85149;
+.config-panel div {
+  min-width: 0;
 }
 
-.sep {
-  color: #30363d;
+.config-panel dt {
+  color: #8b949e;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.config-panel dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
 }
 
 .video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 12px;
+  gap: 16px;
 }
 
 .video-card {
   position: relative;
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 8px;
+  min-height: 240px;
   overflow: hidden;
-  aspect-ratio: 16/9;
+  background: #010409;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  aspect-ratio: 16 / 9;
 }
 
 .video-el {
   width: 100%;
   height: 100%;
-  object-fit: cover;
   display: block;
+  object-fit: cover;
 }
 
 .video-overlay {
   position: absolute;
   top: 0;
-  left: 0;
   right: 0;
+  left: 0;
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 8px 10px;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6), transparent);
+  gap: 12px;
+  padding: 12px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.72), transparent);
 }
 
-.cam-label {
+.video-overlay strong,
+.video-overlay span {
+  display: block;
+}
+
+.video-overlay span {
+  color: #8b949e;
   font-size: 12px;
-  font-weight: 600;
-  color: #fff;
 }
 
 .rtc-badge {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #21262d;
+  align-self: flex-start;
+  padding: 3px 8px;
   color: #8b949e;
+  background: #21262d;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
+
 .rtc-badge.connected {
-  background: #1a4226;
   color: #3fb950;
+  background: #12351f;
 }
+
+.rtc-badge.signaling,
 .rtc-badge.connecting,
-.rtc-badge.signaling {
-  background: #3d2c00;
+.rtc-badge.preparing {
   color: #d29922;
-}
-.rtc-badge.reconnecting {
   background: #3d2c00;
-  color: #d29922;
-  animation: blink 1s infinite;
 }
+
 .rtc-badge.failed,
 .rtc-badge.disconnected {
-  background: #3d0d0d;
   color: #f85149;
+  background: #3d0d0d;
+}
+
+.error-message {
+  position: absolute;
+  right: 12px;
+  bottom: 44px;
+  left: 12px;
+  margin: 0;
+  padding: 8px;
+  color: #ffdcd7;
+  background: rgba(63, 13, 13, 0.84);
+  border: 1px solid rgba(248, 81, 73, 0.45);
+  border-radius: 6px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .btn-restart {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
-  padding: 4px 10px;
-  font-size: 11px;
-  background: rgba(255, 255, 255, 0.08);
+  right: 12px;
+  bottom: 12px;
+  padding: 6px 12px;
   color: #e6edf3;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.btn-restart:hover {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.event-log {
-  list-style: none;
-  margin: 0;
-  padding: 12px;
-  background: #161b22;
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid #30363d;
   border-radius: 6px;
-  max-height: 200px;
-  overflow-y: auto;
-  font-size: 12px;
-  line-height: 1.8;
-  color: #8b949e;
-}
-.event-log li:first-child {
-  color: #e6edf3;
+  cursor: pointer;
 }
 
-@keyframes blink {
-  0%,
-  100% {
-    opacity: 1;
+.btn-restart:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+@media (max-width: 820px) {
+  .dashboard {
+    padding: 16px;
   }
-  50% {
-    opacity: 0.3;
+
+  .hero {
+    grid-template-columns: 1fr;
   }
 }
 </style>
