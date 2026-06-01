@@ -118,15 +118,17 @@ export class MediaMtxWhepReceiver {
      * 当接收到远程媒体轨道时触发
      */
     pc.ontrack = (event) => {
-      const stream = event.streams[0] ?? this.remoteStream;
-      // 如果事件没有提供流，则将轨道添加到自定义流
-      if (!event.streams[0] && this.remoteStream) {
+      if (!this.remoteStream) return;
+
+      // 始终把远端轨道合并到同一个 MediaStream，避免音频和视频分属不同 stream 时丢失声音
+      if (!this.remoteStream.getTracks().some((track) => track.id === event.track.id)) {
         this.remoteStream.addTrack(event.track);
       }
-      // 绑定流到视频元素并更新状态
-      this._attachStream(stream);
+
+      // 绑定合并后的音视频流到视频元素并更新状态
+      this._attachStream(this.remoteStream);
       this._setStatus("connected");
-      this.config.onConnected?.(stream);
+      this.config.onConnected?.(this.remoteStream);
     };
 
     /**
