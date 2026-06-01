@@ -59,7 +59,6 @@ VITE_MEDIAMTX_HOST=198.18.0.1
 VITE_MEDIAMTX_WEBRTC_PORT=8889
 VITE_MEDIAMTX_DEFAULT_PATH=camera1
 VITE_MEDIAMTX_STREAM_PATHS=camera1,camera2
-VITE_MEDIAMTX_WHEP_PATH_TEMPLATE=/{path}/whep
 VITE_MEDIAMTX_REQUEST_TIMEOUT_MS=10000
 VITE_WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
 ```
@@ -68,7 +67,7 @@ VITE_WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
 
 - 单路测试：修改 `VITE_MEDIAMTX_DEFAULT_PATH=your-path` 与 `VITE_MEDIAMTX_STREAM_PATHS=your-path`。
 - 当前 MediaMTX 示例：`VITE_MEDIAMTX_STREAM_PATHS=camera1,camera2`。
-- 旧 MediaMTX endpoint：如果当前版本使用旧接口，可尝试 `VITE_MEDIAMTX_WHEP_PATH_TEMPLATE=/{path}/webrtc`。
+- WHEP endpoint 默认按 `/{path}/whep` 生成，例如 `camera1` 会请求 `/camera1/whep`。
 - 内网测试：通常保持 `VITE_MEDIAMTX_PROTOCOL=http`；如果页面通过 HTTPS 打开，MediaMTX 也应提供 HTTPS 或通过同源代理转发。
 
 ## 本地运行
