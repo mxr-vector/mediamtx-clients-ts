@@ -17,7 +17,13 @@ const cameraConfigs: MediaMtxStreamConfig[] = mediaMtxConfig.streamPaths.map((pa
 
 const { entries, attach, restart } = useMediaMtxReceivers(cameraConfigs);
 
-const endpointPreview = computed(() => buildMediaMtxWhepUrl({ path: mediaMtxConfig.defaultPath }));
+const endpointPreviews = computed(() =>
+  cameraConfigs.map((camera) => ({
+    id: camera.id ?? camera.path,
+    label: camera.label ?? camera.path,
+    endpoint: buildMediaMtxWhepUrl({ path: camera.path }),
+  }))
+);
 const entriesList = computed(() => Array.from(entries.value.values()));
 
 const attached = new Set<string>();
@@ -42,16 +48,12 @@ function onVideoMounted(id: string, el: HTMLVideoElement | null) {
 
       <dl class="config-panel">
         <div>
-          <dt>MediaMTX</dt>
-          <dd>{{ mediaMtxConfig.protocol }}://{{ mediaMtxConfig.host }}:{{ mediaMtxConfig.port }}</dd>
-        </div>
-        <div>
-          <dt>默认流</dt>
-          <dd>{{ mediaMtxConfig.defaultPath }}</dd>
-        </div>
-        <div>
-          <dt>WHEP Endpoint</dt>
-          <dd>{{ endpointPreview }}</dd>
+          <dt>WHEP Endpoints</dt>
+          <dd>
+            <div v-for="item in endpointPreviews" :key="item.id">
+              {{ item.label }}: {{ item.endpoint }}
+            </div>
+          </dd>
         </div>
       </dl>
     </section>
