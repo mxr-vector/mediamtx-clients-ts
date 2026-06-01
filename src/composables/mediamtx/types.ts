@@ -45,14 +45,14 @@ export type MediaMtxReceiverStatus =
  * 这些参数通常从环境变量中读取，用于构建 WHEP 端点 URL。
  * 
  * @interface MediaMtxEnvConfig
- * @property protocol - 通信协议（http 或 https）
+ * @property protocol - 通信协议(http 或 https)
  * @property host - MediaMTX 服务器主机地址
  * @property port - WebRTC 服务端口
  * @property defaultPath - 默认流路径
  * @property streamPaths - 要连接的流路径列表
  * @property whepPathTemplate - WHEP 端点路径模板
- * @property requestTimeoutMs - 请求超时时间（毫秒）
- * @property iceServers - ICE 服务器配置（STUN/TURN）
+ * @property requestTimeoutMs - 请求超时时间(毫秒)
+ * @property iceServers - ICE 服务器配置(STUN/TURN)
  */
 export interface MediaMtxEnvConfig {
   protocol: "http" | "https";
@@ -72,9 +72,9 @@ export interface MediaMtxEnvConfig {
  * 可以指定具体的流路径，或提供完整的端点 URL。
  * 
  * @interface MediaMtxEndpointOptions
- * @property path - 流路径（用于构建 URL）
- * @property endpointUrl - 完整的端点 URL（优先级高于 path）
- * @property config - 自定义环境配置（覆盖默认配置）
+ * @property path - 流路径(用于构建 URL)
+ * @property endpointUrl - 完整的端点 URL(优先级高于 path)
+ * @property config - 自定义环境配置(覆盖默认配置)
  */
 export interface MediaMtxEndpointOptions {
   path?: string;
@@ -90,9 +90,9 @@ export interface MediaMtxEndpointOptions {
  * 
  * @interface MediaMtxReceiverOptions
  * @extends MediaMtxEndpointOptions
- * @property rtcConfig - WebRTC 连接配置（ICE 服务器等）
- * @property autoplay - 是否自动播放（默认 true）
- * @property muted - 是否静音（默认 true，避免自动播放限制）
+ * @property rtcConfig - WebRTC 连接配置(ICE 服务器等)
+ * @property autoplay - 是否自动播放(默认 true)
+ * @property muted - 是否静音(默认 true，避免自动播放限制)
  * @property onStatusChange - 状态变化回调函数
  * @property onConnected - 连接成功回调函数
  * @property onDisconnected - 连接断开回调函数
@@ -116,8 +116,8 @@ export interface MediaMtxReceiverOptions extends MediaMtxEndpointOptions {
  * 
  * @interface MediaMtxStreamConfig
  * @extends MediaMtxReceiverOptions
- * @property id - 流的唯一标识符（可选，默认使用 path）
- * @property label - 流的显示标签（用于 UI 显示）
+ * @property id - 流的唯一标识符(可选，默认使用 path)
+ * @property label - 流的显示标签(用于 UI 显示)
  */
 export interface MediaMtxStreamConfig extends MediaMtxReceiverOptions {
   id?: string;
@@ -135,8 +135,8 @@ export interface MediaMtxStreamConfig extends MediaMtxReceiverOptions {
  * @property label - 显示标签
  * @property path - 流路径
  * @property status - 当前连接状态
- * @property stream - 媒体流对象（连接成功时存在）
- * @property error - 错误信息（连接失败时存在）
+ * @property stream - 媒体流对象(连接成功时存在)
+ * @property error - 错误信息(连接失败时存在)
  */
 export interface MediaMtxReceiverEntry {
   id: string;

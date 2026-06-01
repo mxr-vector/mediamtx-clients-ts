@@ -8,12 +8,12 @@
  * 3. 构建 WHEP 端点 URL
  * 4. 解析和验证配置参数
  * 
- * 环境变量配置（以 VITE_ 前缀开头）：
- * - VITE_MEDIAMTX_PROTOCOL: 通信协议（http/https）
+ * 环境变量配置(以 VITE_ 前缀开头)：
+ * - VITE_MEDIAMTX_PROTOCOL: 通信协议(http/https)
  * - VITE_MEDIAMTX_HOST: 服务器地址
  * - VITE_MEDIAMTX_WEBRTC_PORT: WebRTC 端口
  * - VITE_MEDIAMTX_DEFAULT_PATH: 默认流路径
- * - VITE_MEDIAMTX_STREAM_PATHS: 流路径列表（逗号分隔）
+ * - VITE_MEDIAMTX_STREAM_PATHS: 流路径列表(逗号分隔)
  * - VITE_MEDIAMTX_WHEP_PATH_TEMPLATE: WHEP 路径模板
  * - VITE_MEDIAMTX_REQUEST_TIMEOUT_MS: 请求超时时间
  * - VITE_WEBRTC_STUN_URLS: STUN 服务器 URL
@@ -86,11 +86,11 @@ function parseList(value: string | undefined): string[] {
 /**
  * 解析超时时间
  * 
- * 将字符串转换为有效的超时时间（毫秒）。
+ * 将字符串转换为有效的超时时间(毫秒)。
  * 如果无效则返回默认值。
  * 
  * @param value - 超时时间字符串
- * @returns 超时时间（毫秒）
+ * @returns 超时时间(毫秒)
  */
 function parseTimeout(value: string | undefined): number {
   const parsed = Number(value);
@@ -103,7 +103,7 @@ function parseTimeout(value: string | undefined): number {
  * 将 STUN 服务器 URL 字符串转换为 RTCIceServer 数组。
  * 如果未配置则使用默认的 Google STUN 服务器。
  * 
- * @param value - STUN 服务器 URL 字符串（逗号分隔）
+ * @param value - STUN 服务器 URL 字符串(逗号分隔)
  * @returns RTCIceServer 数组
  */
 function parseIceServers(value: string | undefined): RTCIceServer[] {

@@ -7,7 +7,7 @@
  * 主要功能：
  * 1. 封装 MediaMtxWhepReceiver 类
  * 2. 提供响应式状态管理
- * 3. 自动清理资源（组件卸载时）
+ * 3. 自动清理资源(组件卸载时)
  * 4. 简化视频元素绑定
  * 
  * 使用场景：
@@ -29,7 +29,7 @@ import type { MediaMtxReceiverOptions, MediaMtxReceiverStatus } from "./types";
  * 
  * @interface UseMediaMtxReceiverOptions
  * @extends MediaMtxReceiverOptions
- * @property autoDestroy - 是否在组件卸载时自动销毁（默认 true）
+ * @property autoDestroy - 是否在组件卸载时自动销毁(默认 true)
  */
 export interface UseMediaMtxReceiverOptions extends MediaMtxReceiverOptions {
   autoDestroy?: boolean;
@@ -44,7 +44,7 @@ export interface UseMediaMtxReceiverOptions extends MediaMtxReceiverOptions {
  * @property status - 只读的连接状态引用
  * @property stream - 只读的媒体流引用
  * @property error - 只读的错误信息引用
- * @property receiver - 接收器实例引用（可用于高级操作）
+ * @property receiver - 接收器实例引用(可用于高级操作)
  * @property peerConnection - WebRTC 对等连接引用
  * @property attach - 绑定视频元素并启动连接
  * @property detach - 解绑视频元素并停止连接
@@ -144,7 +144,7 @@ export function useMediaMtxReceiver(options: UseMediaMtxReceiverOptions = {}): U
       },
       /**
        * 连接断开回调
-       * 清除媒体流（除非是重启）
+       * 清除媒体流(除非是重启)
        */
       onDisconnected(reason) {
         if (status.value !== "closed") stream.value = null;
@@ -173,7 +173,7 @@ export function useMediaMtxReceiver(options: UseMediaMtxReceiverOptions = {}): U
     const nextReceiver = createReceiver();
     if (!nextReceiver) return;
 
-    // 停止旧连接（如果是重启）
+    // 停止旧连接(如果是重启)
     receiver.value?.stop("restart");
     receiver.value = nextReceiver;
     peerConnection.value = nextReceiver.getPeerConnection();
@@ -226,7 +226,7 @@ export function useMediaMtxReceiver(options: UseMediaMtxReceiverOptions = {}): U
     await start();
   };
 
-  // 组件卸载时自动清理（如果启用）
+  // 组件卸载时自动清理(如果启用)
   onUnmounted(() => {
     if (autoDestroy) detach();
   });

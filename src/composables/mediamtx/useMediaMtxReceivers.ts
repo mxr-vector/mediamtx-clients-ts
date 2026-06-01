@@ -7,8 +7,8 @@
  * 主要功能：
  * 1. 管理多个 MediaMTX WebRTC 接收器
  * 2. 提供统一的响应式状态管理
- * 3. 支持批量操作（全部断开、全部重连等）
- * 4. 自动清理资源（组件卸载时）
+ * 3. 支持批量操作(全部断开、全部重连等)
+ * 4. 自动清理资源(组件卸载时)
  * 
  * 使用场景：
  * - 多路视频监控
@@ -29,7 +29,7 @@ import type { MediaMtxReceiverEntry, MediaMtxReceiverOptions, MediaMtxStreamConf
  * 提供响应式状态和批量操作方法。
  * 
  * @interface UseMediaMtxReceiversReturn
- * @property entries - 只读的接收器条目映射（key 为接收器 ID）
+ * @property entries - 只读的接收器条目映射(key 为接收器 ID)
  * @property attach - 绑定视频元素并启动指定接收器
  * @property detach - 停止指定接收器
  * @property detachAll - 停止所有接收器
@@ -75,8 +75,8 @@ function normalizeStreams(streams?: MediaMtxStreamConfig[]): Required<Pick<Media
  * 
  * 管理多个 MediaMTX WebRTC 接收器的生命周期和状态。
  * 
- * @param streams - 流配置数组（可选，默认使用环境变量配置）
- * @param sharedOptions - 共享的接收器选项（应用于所有接收器）
+ * @param streams - 流配置数组(可选，默认使用环境变量配置)
+ * @param sharedOptions - 共享的接收器选项(应用于所有接收器)
  * @returns 包含响应式状态和操作方法的对象
  * 
  * @example
@@ -114,7 +114,7 @@ export function useMediaMtxReceivers(
   // 标准化流配置
   const normalized = normalizeStreams(streams);
 
-  // 创建配置映射（用于快速查找）
+  // 创建配置映射(用于快速查找)
   const configById = new Map(normalized.map((item) => [item.id, item]));
   const streamOptionsById = new Map((streams ?? []).map((item) => [item.id ?? item.path ?? "", item]));
 
@@ -169,7 +169,7 @@ export function useMediaMtxReceivers(
     const baseConfig = configById.get(id);
     if (!baseConfig) throw new Error(`MediaMTX stream config not found: ${id}`);
 
-    // 获取流特定的选项（如果有）
+    // 获取流特定的选项(如果有)
     const streamOptions = streamOptionsById.get(id) ?? streamOptionsById.get(baseConfig.path) ?? {};
 
     return new MediaMtxWhepReceiver({
@@ -228,7 +228,7 @@ export function useMediaMtxReceivers(
   const attach = async (id: string, el: HTMLVideoElement) => {
     // 保存视频元素引用
     videoEls.set(id, el);
-    // 停止旧连接（如果有）
+    // 停止旧连接(如果有)
     receivers.get(id)?.stop("restart");
 
     // 创建新接收器并启动

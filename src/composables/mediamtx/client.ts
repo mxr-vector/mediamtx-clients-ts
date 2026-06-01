@@ -94,7 +94,7 @@ export class MediaMtxWhepReceiver {
    * @throws 连接过程中出现的错误
    */
   async start(): Promise<void> {
-    // 停止之前的连接（如果是重连）
+    // 停止之前的连接(如果是重连)
     this.stop("restart");
     this._setStatus("preparing");
 
@@ -109,7 +109,7 @@ export class MediaMtxWhepReceiver {
     this.remoteStream = new MediaStream();
     this.abortController = new AbortController();
 
-    // 添加视频和音频接收器（仅接收模式）
+    // 添加视频和音频接收器(仅接收模式)
     pc.addTransceiver("video", { direction: "recvonly" });
     pc.addTransceiver("audio", { direction: "recvonly" });
 
@@ -195,7 +195,7 @@ export class MediaMtxWhepReceiver {
    * 3. 停止媒体轨道
    * 4. 清理视频元素
    * 
-   * @param reason - 停止原因（用于状态回调）
+   * @param reason - 停止原因(用于状态回调)
    */
   stop(reason = "closed"): void {
     // 取消进行中的请求
@@ -252,7 +252,7 @@ export class MediaMtxWhepReceiver {
   /**
    * 获取 WebRTC 对等连接实例
    * 
-   * @returns RTCPeerConnection 实例或 null（如果未连接）
+   * @returns RTCPeerConnection 实例或 null(如果未连接)
    */
   getPeerConnection(): RTCPeerConnection | null {
     return this.pc;
@@ -266,7 +266,7 @@ export class MediaMtxWhepReceiver {
    * 
    * @param url - WHEP 端点 URL
    * @param sdp - SDP offer 内容
-   * @param timeoutMs - 请求超时时间（毫秒）
+   * @param timeoutMs - 请求超时时间(毫秒)
    * @returns SDP answer 内容
    * @throws 请求失败或超时错误
    */
