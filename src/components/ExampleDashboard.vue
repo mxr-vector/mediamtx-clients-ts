@@ -83,7 +83,7 @@ const attached = new Set<string>();
  * 将视频元素绑定到对应的接收器。
  *
  * @param id - 接收器 ID
- * @param el - HTML 视频元素或 null（卸载时）
+ * @param el - HTML 视频元素或 null(卸载时)
  */
 function onVideoMounted(id: string, el: HTMLVideoElement | null) {
   // 只绑定一次，避免重复绑定
@@ -131,7 +131,7 @@ function onVideoMounted(id: string, el: HTMLVideoElement | null) {
         <!--
           视频元素
           - autoplay: 自动播放
-          - muted: 静音（避免浏览器自动播放限制）
+          - muted: 静音(避免浏览器自动播放限制)
           - playsinline: 移动端内联播放
           - webkit-playsinline: Webkit 浏览器内联播放
           - ref: 通过回调函数获取 DOM 引用
