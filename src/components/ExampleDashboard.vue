@@ -5,7 +5,7 @@ useMediaMtxReceivers composable 管理多路视频流。 * * 主要功能： * 1
 * @component ExampleDashboard */
 
 <script lang="ts" setup>
-import { computed } from "vue";
+import { computed, shallowRef } from "vue";
 import {
   buildMediaMtxWhepUrl,
   getMediaMtxConfig,
@@ -45,7 +45,10 @@ const cameraConfigs: MediaMtxStreamConfig[] = mediaMtxConfig.streamPaths.map((pa
  * - attach: 绑定视频元素函数
  * - restart: 重启连接函数
  */
-const { entries, attach, restart } = useMediaMtxReceivers(cameraConfigs);
+const { entries, attach, restart } = useMediaMtxReceivers(cameraConfigs, {
+  autoplay: false,
+  muted: false,
+});
 
 /**
  * 计算端点预览信息
@@ -75,6 +78,7 @@ const entriesList = computed(() => Array.from(entries.value.values()));
  * 避免重复绑定。
  */
 const attached = new Set<string>();
+const playingVideoIds = shallowRef(new Set<string>());
 
 /**
  * 视频元素挂载回调
@@ -91,6 +95,48 @@ function onVideoMounted(id: string, el: HTMLVideoElement | null) {
     attached.add(id);
     attach(id, el);
   }
+}
+
+/**
+ * 重启指定视频
+ *
+ * 重连后重新回到首帧预览状态，等待用户点击播放。
+ *
+ * @param id - 接收器 ID
+ */
+async function restartVideo(id: string) {
+  playingVideoIds.value = new Set([...playingVideoIds.value].filter((videoId) => videoId !== id));
+  await restart(id);
+}
+
+/**
+ * 开始播放指定视频
+ *
+ * WebRTC 流默认只展示首帧预览，用户点击后再播放完整音视频。
+ *
+ * @param entry - 接收器条目
+ */
+async function playVideo(entry: { id: string; stream: MediaStream | null }) {
+  if (!entry.stream) return;
+
+  const video = document.getElementById(`video-${entry.id}`) as HTMLVideoElement | null;
+  if (!video) return;
+
+  try {
+    await video.play();
+    playingVideoIds.value = new Set(playingVideoIds.value).add(entry.id);
+  } catch (error) {
+    console.error("视频播放失败", error);
+  }
+}
+
+/**
+ * 判断指定视频是否正在播放
+ *
+ * @param id - 接收器 ID
+ */
+function isVideoPlaying(id: string) {
+  return playingVideoIds.value.has(id);
 }
 </script>
 
@@ -130,20 +176,30 @@ function onVideoMounted(id: string, el: HTMLVideoElement | null) {
       <article v-for="entry in entriesList" :key="entry.id" class="video-card">
         <!--
           视频元素
-          - autoplay: 自动播放
-          - muted: 静音(避免浏览器自动播放限制)
+          - preload="auto": 预加载 WebRTC 媒体流，用于展示首帧
           - playsinline: 移动端内联播放
           - webkit-playsinline: Webkit 浏览器内联播放
           - ref: 通过回调函数获取 DOM 引用
         -->
         <video
+          :id="`video-${entry.id}`"
           :ref="(el) => onVideoMounted(entry.id, el as HTMLVideoElement | null)"
-          autoplay
-          muted
+          preload="auto"
           playsinline
           webkit-playsinline
           class="video-el"
+          @click="playVideo(entry)"
         />
+
+        <!-- 首帧预览播放按钮：点击后才播放完整音视频 -->
+        <button
+          v-if="entry.stream && !isVideoPlaying(entry.id)"
+          class="btn-play"
+          type="button"
+          @click="playVideo(entry)"
+        >
+          ▶ 播放
+        </button>
 
         <!-- 视频覆盖层：显示摄像头信息和状态 -->
         <div class="video-overlay">
@@ -159,7 +215,7 @@ function onVideoMounted(id: string, el: HTMLVideoElement | null) {
         <p v-if="entry.error" class="error-message">{{ entry.error.message }}</p>
 
         <!-- 重连按钮：手动触发重新连接 -->
-        <button class="btn-restart" type="button" @click="restart(entry.id)">↺ 重连</button>
+        <button class="btn-restart" type="button" @click="restartVideo(entry.id)">↺ 重连</button>
       </article>
     </section>
   </main>
@@ -260,6 +316,27 @@ h1 {
   height: 100%;
   display: block;
   object-fit: cover;
+}
+
+/* 首帧预览播放按钮样式 */
+.btn-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  padding: 12px 18px;
+  color: #e6edf3;
+  background: rgba(0, 0, 0, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.btn-play:hover {
+  background: rgba(0, 0, 0, 0.86);
 }
 
 /* 视频覆盖层样式 */
