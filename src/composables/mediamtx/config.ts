@@ -1,5 +1,34 @@
+/**
+ * MediaMTX 配置管理模块
+ * 
+ * 本模块负责管理 MediaMTX WebRTC 接收器的配置参数。
+ * 主要功能：
+ * 1. 从环境变量读取配置
+ * 2. 提供默认配置值
+ * 3. 构建 WHEP 端点 URL
+ * 4. 解析和验证配置参数
+ * 
+ * 环境变量配置（以 VITE_ 前缀开头）：
+ * - VITE_MEDIAMTX_PROTOCOL: 通信协议（http/https）
+ * - VITE_MEDIAMTX_HOST: 服务器地址
+ * - VITE_MEDIAMTX_WEBRTC_PORT: WebRTC 端口
+ * - VITE_MEDIAMTX_DEFAULT_PATH: 默认流路径
+ * - VITE_MEDIAMTX_STREAM_PATHS: 流路径列表（逗号分隔）
+ * - VITE_MEDIAMTX_WHEP_PATH_TEMPLATE: WHEP 路径模板
+ * - VITE_MEDIAMTX_REQUEST_TIMEOUT_MS: 请求超时时间
+ * - VITE_WEBRTC_STUN_URLS: STUN 服务器 URL
+ * 
+ * @module config
+ */
+
 import type { MediaMtxEndpointOptions, MediaMtxEnvConfig } from "./types";
 
+/**
+ * 默认配置
+ * 
+ * 当环境变量未设置时使用的默认值。
+ * 这些值适用于本地开发环境。
+ */
 const DEFAULT_CONFIG: MediaMtxEnvConfig = {
   protocol: "http",
   host: "198.18.0.1",
@@ -11,15 +40,42 @@ const DEFAULT_CONFIG: MediaMtxEnvConfig = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
+/**
+ * 获取环境变量值
+ * 
+ * 从 Vite 的 import.meta.env 中读取环境变量。
+ * 返回 undefined 如果变量不存在或为空字符串。
+ * 
+ * @param name - 环境变量名
+ * @returns 环境变量值或 undefined
+ */
 function getEnv(name: string): string | undefined {
   const value = import.meta.env[name];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+/**
+ * 解析协议类型
+ * 
+ * 将字符串转换为有效的协议类型。
+ * 只接受 "https"，其他值默认为 "http"。
+ * 
+ * @param value - 协议字符串
+ * @returns "http" 或 "https"
+ */
 function parseProtocol(value: string | undefined): "http" | "https" {
   return value === "https" ? "https" : "http";
 }
 
+/**
+ * 解析逗号分隔的列表
+ * 
+ * 将逗号分隔的字符串转换为数组。
+ * 自动去除空白项和空字符串。
+ * 
+ * @param value - 逗号分隔的字符串
+ * @returns 字符串数组
+ */
 function parseList(value: string | undefined): string[] {
   return (value ?? "")
     .split(",")
@@ -27,16 +83,43 @@ function parseList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+/**
+ * 解析超时时间
+ * 
+ * 将字符串转换为有效的超时时间（毫秒）。
+ * 如果无效则返回默认值。
+ * 
+ * @param value - 超时时间字符串
+ * @returns 超时时间（毫秒）
+ */
 function parseTimeout(value: string | undefined): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CONFIG.requestTimeoutMs;
 }
 
+/**
+ * 解析 ICE 服务器配置
+ * 
+ * 将 STUN 服务器 URL 字符串转换为 RTCIceServer 数组。
+ * 如果未配置则使用默认的 Google STUN 服务器。
+ * 
+ * @param value - STUN 服务器 URL 字符串（逗号分隔）
+ * @returns RTCIceServer 数组
+ */
 function parseIceServers(value: string | undefined): RTCIceServer[] {
   const urls = parseList(value);
   return urls.length > 0 ? [{ urls }] : DEFAULT_CONFIG.iceServers;
 }
 
+/**
+ * 获取 MediaMTX 配置
+ * 
+ * 合并默认配置、环境变量配置和自定义覆盖配置。
+ * 优先级：自定义配置 > 环境变量 > 默认配置
+ * 
+ * @param overrides - 自定义配置覆盖
+ * @returns 完整的 MediaMTX 配置对象
+ */
 export function getMediaMtxConfig(overrides: Partial<MediaMtxEnvConfig> = {}): MediaMtxEnvConfig {
   const defaultPath = getEnv("VITE_MEDIAMTX_DEFAULT_PATH") ?? DEFAULT_CONFIG.defaultPath;
   const streamPaths = parseList(getEnv("VITE_MEDIAMTX_STREAM_PATHS"));
@@ -54,6 +137,29 @@ export function getMediaMtxConfig(overrides: Partial<MediaMtxEnvConfig> = {}): M
   };
 }
 
+/**
+ * 构建 MediaMTX WHEP 端点 URL
+ * 
+ * 根据配置和选项构建完整的 WHEP 端点 URL。
+ * WHEP (WebRTC-HTTP Egress Protocol) 是用于 WebRTC 媒体流传输的协议。
+ * 
+ * URL 构建规则：
+ * 1. 如果提供了完整的 endpointUrl，直接使用
+ * 2. 否则根据配置模板构建 URL
+ * 3. 模板中的 {path} 会被实际路径替换
+ * 
+ * @param options - 端点选项
+ * @returns 完整的 WHEP 端点 URL
+ * 
+ * @example
+ * // 基本用法
+ * buildMediaMtxWhepUrl({ path: "camera1" })
+ * // 返回: "http://198.18.0.1:8889/camera1/whep"
+ * 
+ * // 使用完整 URL
+ * buildMediaMtxWhepUrl({ endpointUrl: "https://example.com/whep" })
+ * // 返回: "https://example.com/whep"
+ */
 export function buildMediaMtxWhepUrl(options: MediaMtxEndpointOptions = {}): string {
   if (options.endpointUrl) return options.endpointUrl;
 
@@ -68,6 +174,13 @@ export function buildMediaMtxWhepUrl(options: MediaMtxEndpointOptions = {}): str
   return `${config.protocol}://${config.host}${port}${endpointPath}`;
 }
 
+/**
+ * 获取默认的 MediaMTX 流路径列表
+ * 
+ * 便捷方法，直接返回当前配置中的流路径列表。
+ * 
+ * @returns 流路径字符串数组
+ */
 export function getDefaultMediaMtxStreams(): string[] {
   return getMediaMtxConfig().streamPaths;
 }
