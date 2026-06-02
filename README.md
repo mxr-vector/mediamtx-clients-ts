@@ -40,41 +40,6 @@
 - MediaMTX WebRTC / WHEP
 - Browser `RTCPeerConnection`
 
-## 链路流程
-
-```mermaid
-flowchart TD
-  subgraph Browser["浏览器 (Vue 3 Client)"]
-    A["ExampleDashboard.vue"] -->|"调用 composable"| B["useMediaMtxReceivers()"]
-    B -->|"创建实例"| C["MediaMtxWhepReceiver"]
-    C -->|"创建 RTCPeerConnection\n(recvonly)"| D["RTCPeerConnection"]
-    C -->|"addTransceiver\nvideo + audio"| D
-    D -->|"createOffer()"| E["SDP Offer"]
-    E -->|"setLocalDescription"| D
-    D -->|"等待 ICE 候选收集\n(1500ms 超时)"| E
-    C -->|"HTTP POST\nContent-Type: application/sdp"| F["WHEP Endpoint"]
-    F -->|"SDP Answer"| D
-    D -->|"setRemoteDescription"| D
-    D -->|"ontrack 事件"| G["MediaStream"]
-    G -->|"绑定 srcObject"| H["<video> 元素"]
-  end
-
-  subgraph MediaMTX["MediaMTX Server"]
-    I["RTSP Path\ncamera1, camera2..."] -->|"转封装"| J["WebRTC/WHEP\nHTTP :8889"]
-  end
-
-  subgraph Sources["RTSP 源"]
-    K["摄像头/编码器"] -->|"rtsp://..."| I
-  end
-
-  F -->|"POST /{path}/whep"| J
-  J -->|"RTP/RTCP 媒体流"| D
-
-  style Browser fill:#1a1a2e,stroke:#16213e,color:#e6e6e6
-  style MediaMTX fill:#0f3460,stroke:#16213e,color:#e6e6e6
-  style Sources fill:#533483,stroke:#16213e,color:#e6e6e6
-```
-
 职责划分：
 
 | 模块       | 职责                                                         |
