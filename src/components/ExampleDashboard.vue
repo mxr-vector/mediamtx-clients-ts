@@ -5,7 +5,7 @@ useMediaMtxReceivers composable 管理多路视频流。 * * 主要功能： * 1
 * @component ExampleDashboard */
 
 <script lang="ts" setup>
-import { computed, shallowRef } from "vue";
+import { computed } from "vue";
 import {
   buildMediaMtxWhepUrl,
   getMediaMtxConfig,
@@ -46,8 +46,8 @@ const cameraConfigs: MediaMtxStreamConfig[] = mediaMtxConfig.streamPaths.map((pa
  * - restart: 重启连接函数
  */
 const { entries, attach, restart } = useMediaMtxReceivers(cameraConfigs, {
-  autoplay: false,
-  muted: false,
+  autoplay: true,
+  muted: true,
 });
 
 /**
@@ -78,7 +78,6 @@ const entriesList = computed(() => Array.from(entries.value.values()));
  * 避免重复绑定。
  */
 const attached = new Set<string>();
-const playingVideoIds = shallowRef(new Set<string>());
 
 /**
  * 视频元素挂载回调
@@ -100,43 +99,12 @@ function onVideoMounted(id: string, el: HTMLVideoElement | null) {
 /**
  * 重启指定视频
  *
- * 重连后重新回到首帧预览状态，等待用户点击播放。
+ * 重连后自动播放视频流。
  *
  * @param id - 接收器 ID
  */
 async function restartVideo(id: string) {
-  playingVideoIds.value = new Set([...playingVideoIds.value].filter((videoId) => videoId !== id));
   await restart(id);
-}
-
-/**
- * 开始播放指定视频
- *
- * WebRTC 流默认只展示首帧预览，用户点击后再播放完整音视频。
- *
- * @param entry - 接收器条目
- */
-async function playVideo(entry: { id: string; stream: MediaStream | null }) {
-  if (!entry.stream) return;
-
-  const video = document.getElementById(`video-${entry.id}`) as HTMLVideoElement | null;
-  if (!video) return;
-
-  try {
-    await video.play();
-    playingVideoIds.value = new Set(playingVideoIds.value).add(entry.id);
-  } catch (error) {
-    console.error("视频播放失败", error);
-  }
-}
-
-/**
- * 判断指定视频是否正在播放
- *
- * @param id - 接收器 ID
- */
-function isVideoPlaying(id: string) {
-  return playingVideoIds.value.has(id);
 }
 </script>
 
@@ -185,21 +153,12 @@ function isVideoPlaying(id: string) {
           :id="`video-${entry.id}`"
           :ref="(el) => onVideoMounted(entry.id, el as HTMLVideoElement | null)"
           preload="auto"
+          autoplay
+          muted
           playsinline
           webkit-playsinline
           class="video-el"
-          @click="playVideo(entry)"
         />
-
-        <!-- 首帧预览播放按钮：点击后才播放完整音视频 -->
-        <button
-          v-if="entry.stream && !isVideoPlaying(entry.id)"
-          class="btn-play"
-          type="button"
-          @click="playVideo(entry)"
-        >
-          ▶ 播放
-        </button>
 
         <!-- 视频覆盖层：显示摄像头信息和状态 -->
         <div class="video-overlay">
