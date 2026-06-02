@@ -2,7 +2,7 @@
 
 一个基于 **Vue 3 + Vite + 浏览器原生 WebRTC API** 的 MediaMTX RTSP 监控接收端示例。项目用于验证 RTSP 摄像头、编码器或其他 RTSP 源经 MediaMTX 转换为 WebRTC 后，能否在浏览器中以多路视频墙形式稳定播放。
 
-![MediaMTX WebRTC 链路图](src/assets/mediamtx-webrtc-flow.svg)
+![MediaMTX WebRTC 链路图](src/assets/mediamtx-webrtc-flow.png)
 
 ## 项目定位
 
@@ -43,28 +43,46 @@
 ## 链路流程
 
 ```mermaid
-flowchart LR
-  A[RTSP 摄像头 / RTSP 源] -->|rtsp://...| B[MediaMTX Server]
-  C[Vue WebRTC Client] -->|POST SDP offer\n/{path}/whep| B
-  B -->|SDP answer| C
-  B -->|WebRTC RTP/RTCP media| D[Browser RTCPeerConnection]
-  D -->|MediaStream| E[Vue video element]
-
-  subgraph Browser
-    C
-    D
-    E
+flowchart TD
+  subgraph Browser["浏览器 (Vue 3 Client)"]
+    A["ExampleDashboard.vue"] -->|"调用 composable"| B["useMediaMtxReceivers()"]
+    B -->|"创建实例"| C["MediaMtxWhepReceiver"]
+    C -->|"创建 RTCPeerConnection\n(recvonly)"| D["RTCPeerConnection"]
+    C -->|"addTransceiver\nvideo + audio"| D
+    D -->|"createOffer()"| E["SDP Offer"]
+    E -->|"setLocalDescription"| D
+    D -->|"等待 ICE 候选收集\n(1500ms 超时)"| E
+    C -->|"HTTP POST\nContent-Type: application/sdp"| F["WHEP Endpoint"]
+    F -->|"SDP Answer"| D
+    D -->|"setRemoteDescription"| D
+    D -->|"ontrack 事件"| G["MediaStream"]
+    G -->|"绑定 srcObject"| H["<video> 元素"]
   end
+
+  subgraph MediaMTX["MediaMTX Server"]
+    I["RTSP Path\ncamera1, camera2..."] -->|"转封装"| J["WebRTC/WHEP\nHTTP :8889"]
+  end
+
+  subgraph Sources["RTSP 源"]
+    K["摄像头/编码器"] -->|"rtsp://..."| I
+  end
+
+  F -->|"POST /{path}/whep"| J
+  J -->|"RTP/RTCP 媒体流"| D
+
+  style Browser fill:#1a1a2e,stroke:#16213e,color:#e6e6e6
+  style MediaMTX fill:#0f3460,stroke:#16213e,color:#e6e6e6
+  style Sources fill:#533483,stroke:#16213e,color:#e6e6e6
 ```
 
 职责划分：
 
-| 模块 | 职责 |
-| --- | --- |
-| RTSP 源 | 摄像头、编码器或文件流，向 MediaMTX 推流或被 MediaMTX 拉流。 |
-| MediaMTX | 管理 RTSP path，并将其暴露为 WebRTC/WHEP 可读流。 |
-| Vue 客户端 | 创建 `RTCPeerConnection`，发起 WHEP 协商，维护连接状态。 |
-| `<video>` | 播放 composable 绑定的 `MediaStream`。 |
+| 模块       | 职责                                                         |
+| ---------- | ------------------------------------------------------------ |
+| RTSP 源    | 摄像头、编码器或文件流，向 MediaMTX 推流或被 MediaMTX 拉流。 |
+| MediaMTX   | 管理 RTSP path，并将其暴露为 WebRTC/WHEP 可读流。            |
+| Vue 客户端 | 创建 `RTCPeerConnection`，发起 WHEP 协商，维护连接状态。     |
+| `<video>`  | 播放 composable 绑定的 `MediaStream`。                       |
 
 ## 环境要求
 
@@ -179,12 +197,7 @@ const { status, stream, error, attach, restart, detach } = useMediaMtxReceiver({
 模板中绑定视频元素：
 
 ```vue
-<video
-  :ref="(el) => el && attach(el as HTMLVideoElement)"
-  autoplay
-  muted
-  playsinline
-/>
+<video :ref="(el) => el && attach(el as HTMLVideoElement)" autoplay muted playsinline />
 <button type="button" @click="restart">重连</button>
 <p>状态：{{ status }}</p>
 <p v-if="error">{{ error.message }}</p>
@@ -233,16 +246,16 @@ useMediaMtxReceiver({
 
 每个视频卡片右上角会显示当前连接状态：
 
-| 状态 | 含义 |
-| --- | --- |
-| `idle` | 尚未开始连接。 |
-| `preparing` | 正在创建 WebRTC 连接与内部资源。 |
-| `signaling` | 正在创建 SDP offer 并向 MediaMTX 发起 WHEP 请求。 |
-| `connecting` | 已收到 SDP answer，正在等待 ICE / 媒体连接。 |
-| `connected` | 已收到媒体流并绑定到 `<video>`。 |
-| `disconnected` | WebRTC 连接中断。 |
-| `failed` | 协商、HTTP 请求或 ICE 连接失败。 |
-| `closed` | 连接已主动关闭。 |
+| 状态           | 含义                                              |
+| -------------- | ------------------------------------------------- |
+| `idle`         | 尚未开始连接。                                    |
+| `preparing`    | 正在创建 WebRTC 连接与内部资源。                  |
+| `signaling`    | 正在创建 SDP offer 并向 MediaMTX 发起 WHEP 请求。 |
+| `connecting`   | 已收到 SDP answer，正在等待 ICE / 媒体连接。      |
+| `connected`    | 已收到媒体流并绑定到 `<video>`。                  |
+| `disconnected` | WebRTC 连接中断。                                 |
+| `failed`       | 协商、HTTP 请求或 ICE 连接失败。                  |
+| `closed`       | 连接已主动关闭。                                  |
 
 点击“↺ 重连”会释放当前连接并重新发起协商。
 
