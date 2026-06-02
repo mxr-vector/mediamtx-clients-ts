@@ -310,6 +310,12 @@ pnpm preview
 - 优先使用浏览器普遍支持的 H.264 配置。
 - 打开浏览器 WebRTC internals / 媒体面板，确认是否收到 video track 和数据包。
 
+
+### 本地测试正常，局域网/远程访问mediaMTX无响应
+
+https://mediamtx.org/docs/features/webrtc-specific-features#solving-webrtc-connectivity-issues
+
+
 ## 许可证
 
 见 [LICENSE](LICENSE)。
