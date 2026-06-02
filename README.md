@@ -78,7 +78,15 @@ cp .env.example .env
 pnpm dev
 ```
 
-打开 Vite 输出的本地地址。页面加载后会自动尝试连接 `VITE_MEDIAMTX_STREAM_PATHS` 中配置的所有流。
+当前 Vite 已配置为监听 `0.0.0.0`，除本机 `http://localhost:5173` 外，也可以在同一局域网设备上访问：
+
+```text
+http://<运行本项目电脑的局域网 IP>:5173
+```
+
+如果仍然无响应，请检查系统防火墙是否允许 Node/Vite 入站访问，并确认路由器或云服务器安全组已放行对应端口。公网访问还需要公网 IP、端口映射或反向代理；仅修改 Vite 监听地址不能自动打通 NAT。
+
+打开 Vite 输出的地址。页面加载后会自动尝试连接 `VITE_MEDIAMTX_STREAM_PATHS` 中配置的所有流。
 
 ## 环境变量
 
@@ -136,6 +144,8 @@ VITE_MEDIAMTX_WHEP_PATH_TEMPLATE=/{path}/webrtc
 2. `mediamtx.yml` 中存在与前端 `.env` 一致的 path。
 3. RTSP 源可被 MediaMTX 正常读取，且至少包含视频轨道。
 4. 浏览器所在机器能访问 MediaMTX WebRTC 端口和 ICE 候选地址。
+
+> 注意：前端页面可被局域网/公网打开后，浏览器仍会直接请求 `.env` 中的 `VITE_MEDIAMTX_HOST:VITE_MEDIAMTX_WEBRTC_PORT`。如果该地址仍指向本机 `127.0.0.1`、内网不可达地址，或 MediaMTX 只监听本地回环地址，远端浏览器依然会无响应或连接失败。请把 `VITE_MEDIAMTX_HOST` 改为远端浏览器能访问的 IP/域名，并确保 MediaMTX 的 HTTP/WHEP 端口、WebRTC UDP 端口和 ICE 候选地址对访问端可达。
 
 一个典型 path 形态如下，实际配置请按你的 MediaMTX 版本和部署方式调整：
 
