@@ -145,6 +145,8 @@ VITE_MEDIAMTX_WHEP_PATH_TEMPLATE=/{path}/webrtc
 3. RTSP 源可被 MediaMTX 正常读取，且至少包含视频轨道。
 4. 浏览器所在机器能访问 MediaMTX WebRTC 端口和 ICE 候选地址。
 
+![放行port](src/assets/port.png)
+
 > 注意：前端页面可被局域网/公网打开后，浏览器仍会直接请求 `.env` 中的 `VITE_MEDIAMTX_HOST:VITE_MEDIAMTX_WEBRTC_PORT`。如果该地址仍指向本机 `127.0.0.1`、内网不可达地址，或 MediaMTX 只监听本地回环地址，远端浏览器依然会无响应或连接失败。请把 `VITE_MEDIAMTX_HOST` 改为远端浏览器能访问的 IP/域名，并确保 MediaMTX 的 HTTP/WHEP 端口、WebRTC UDP 端口和 ICE 候选地址对访问端可达。
 
 一个典型 path 形态如下，实际配置请按你的 MediaMTX 版本和部署方式调整：
