@@ -141,10 +141,27 @@ VITE_MEDIAMTX_WHEP_PATH_TEMPLATE=/{path}/webrtc
 
 ```yaml
 paths:
-  camera1:
+  stream/live:
     source: rtsp://user:password@192.168.1.10/stream1
-  camera2:
+  stream/camera1:
     source: rtsp://user:password@192.168.1.11/stream1
+```
+
+### OBS推流到mediaMTX
+
+默认使用x264，mediamtx不接受b帧
+x264opts   bframes=0:keyint=30:no-scenecut  强制无 B 帧
+![obs推流到mediaMTX](src/assets//obs.png)
+
+### FFmpeg推流到mediaMTX
+
+```
+ffmpeg -re -stream_loop -1 -i 1.mp4 \
+-c:v libx264 -profile:v baseline -pix_fmt yuv420p -b:v 1500k -maxrate 1500k -bufsize 3000k -g 30 -preset veryfast -tune zerolatency \
+-c:a aac -b:a 128k -ar 44100 -ac 2 \
+-fflags +genpts -use_wallclock_as_timestamps 1 \
+-f flv rtmp://127.0.0.1:1935/stream/live
+
 ```
 
 ## Composable 使用
