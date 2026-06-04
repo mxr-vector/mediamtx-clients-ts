@@ -38,7 +38,7 @@ export interface MediaMtxQuicEnvConfig extends MediaMtxBaseEnvConfig {
   requestTimeoutMs: number;
   /** 是否订阅音频轨道；多路监控默认关闭以降低 WebCodecs/AudioContext 开销 */
   enableAudio: boolean;
-  /** 视频解码帧率上限，`0` 表示不限制 */
+  /** 视频渲染帧率上限，`0` 表示不限制 */
   maxVideoFps: number;
   /** canvas 内部渲染宽度上限，`0` 表示按原始视频宽度渲染 */
   maxRenderWidth: number;
@@ -46,6 +46,8 @@ export interface MediaMtxQuicEnvConfig extends MediaMtxBaseEnvConfig {
   maxRenderHeight: number;
   /** VideoDecoder 等待队列上限，越小越偏低延迟 */
   maxVideoDecodeQueueSize: number;
+  /** 多路 QUIC 首次启动错峰间隔（毫秒），降低同时初始化 decoder 的峰值压力 */
+  startupStaggerMs: number;
   /** 是否输出 QUIC reader 调试日志 */
   debug: boolean;
   /** MoQ 读流页面路径模板，`{path}` 会被替换为流路径，默认 `/{path}/` */
@@ -100,7 +102,7 @@ export interface MediaMtxQuicAuthOptions {
 export interface MediaMtxQuicReceiverOptions extends MediaMtxQuicEndpointOptions, MediaMtxQuicAuthOptions {
   /** 是否订阅音频轨道；多路监控默认建议关闭以降低解码和混音开销 */
   enableAudio?: boolean;
-  /** 视频解码帧率上限，`0` 或未设置表示不限制 */
+  /** 视频渲染帧率上限，`0` 或未设置表示不限制 */
   maxVideoFps?: number;
   /** canvas 内部渲染宽度上限，`0` 或未设置表示按原始视频宽度渲染 */
   maxRenderWidth?: number;
@@ -108,6 +110,8 @@ export interface MediaMtxQuicReceiverOptions extends MediaMtxQuicEndpointOptions
   maxRenderHeight?: number;
   /** VideoDecoder 等待队列上限，越小越偏低延迟 */
   maxVideoDecodeQueueSize?: number;
+  /** 多路 QUIC 首次启动错峰间隔（毫秒），降低同时初始化 decoder 的峰值压力 */
+  startupStaggerMs?: number;
   /** 是否输出 QUIC reader 调试日志 */
   debug?: boolean;
   /** 连接状态变化回调 */

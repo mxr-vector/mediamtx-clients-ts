@@ -124,8 +124,10 @@ export class MediaMtxQuicReceiver {
       maxVideoDecodeQueueSize: this.config.maxVideoDecodeQueueSize ?? runtimeConfig.maxVideoDecodeQueueSize,
       debug: this.config.debug ?? runtimeConfig.debug,
       onError: (message: string) => {
-        this._setStatus("disconnected");
-        this.config.onDisconnected?.(message);
+        if (message.includes("retrying in")) {
+          this._setStatus("disconnected");
+          this.config.onDisconnected?.(message);
+        }
         this.config.onError?.(new Error(message));
       },
       onSubscribed: (hasAudio: boolean) => {

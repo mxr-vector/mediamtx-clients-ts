@@ -100,6 +100,7 @@ export function useMediaMtxQuicReceivers(
 
   const receivers = new Map<string, MediaMtxQuicReceiver>();
   const containerEls = new Map<string, HTMLElement>();
+  const startupTimers = new Map<string, number>();
   const entries = shallowRef<Map<string, MediaMtxQuicReceiverEntry>>(new Map());
 
   normalized.forEach((item) => {
@@ -113,6 +114,19 @@ export function useMediaMtxQuicReceivers(
       error: null,
     });
   });
+
+  const clearStartupTimer = (id: string) => {
+    const timer = startupTimers.get(id);
+    if (timer === undefined) return;
+    window.clearTimeout(timer);
+    startupTimers.delete(id);
+  };
+
+  const getStartupDelay = (id: string) => {
+    const baseDelay = sharedOptions.startupStaggerMs ?? getMediaMtxQuicConfig().startupStaggerMs;
+    if (baseDelay <= 0) return 0;
+    return Math.max(0, normalized.findIndex((item) => item.id === id)) * baseDelay;
+  };
 
   const updateEntry = (id: string, patch: Partial<MediaMtxQuicReceiverEntry>) => {
     const entry = entries.value.get(id);
@@ -160,8 +174,7 @@ export function useMediaMtxQuicReceivers(
     });
   };
 
-  const attach = async (id: string, el: HTMLElement) => {
-    containerEls.set(id, el);
+  const startReceiver = async (id: string, el: HTMLElement) => {
     receivers.get(id)?.stop("restart");
 
     const receiver = createReceiver(id, el);
@@ -171,7 +184,28 @@ export function useMediaMtxQuicReceivers(
     });
   };
 
+  const attach = async (id: string, el: HTMLElement) => {
+    containerEls.set(id, el);
+    clearStartupTimer(id);
+
+    const delay = getStartupDelay(id);
+    if (delay <= 0) {
+      await startReceiver(id, el);
+      return;
+    }
+
+    updateEntry(id, { status: "preparing" });
+    await new Promise<void>((resolve) => {
+      const timer = window.setTimeout(() => {
+        startupTimers.delete(id);
+        startReceiver(id, el).finally(resolve);
+      }, delay);
+      startupTimers.set(id, timer);
+    });
+  };
+
   const detach = (id: string) => {
+    clearStartupTimer(id);
     receivers.get(id)?.stop();
     receivers.delete(id);
     containerEls.delete(id);
@@ -179,6 +213,8 @@ export function useMediaMtxQuicReceivers(
   };
 
   const detachAll = () => {
+    startupTimers.forEach((timer) => window.clearTimeout(timer));
+    startupTimers.clear();
     receivers.forEach((receiver) => receiver.stop());
     receivers.clear();
     containerEls.clear();
@@ -188,7 +224,8 @@ export function useMediaMtxQuicReceivers(
   const restart = async (id: string) => {
     const el = containerEls.get(id);
     if (!el) return;
-    await attach(id, el);
+    clearStartupTimer(id);
+    await startReceiver(id, el);
   };
 
   const unmute = (id: string) => {

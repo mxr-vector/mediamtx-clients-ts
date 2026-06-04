@@ -63,6 +63,7 @@ const { entries, attach, restart, unmute } = useMediaMtxQuicReceivers(cameraConf
   maxRenderWidth: mediaMtxConfig.maxRenderWidth,
   maxRenderHeight: mediaMtxConfig.maxRenderHeight,
   maxVideoDecodeQueueSize: mediaMtxConfig.maxVideoDecodeQueueSize,
+  startupStaggerMs: mediaMtxConfig.startupStaggerMs,
   debug: mediaMtxConfig.debug,
 });
 
@@ -81,6 +82,7 @@ const quicTuningSummary = computed(() => [
   `帧率上限：${mediaMtxConfig.maxVideoFps > 0 ? `${mediaMtxConfig.maxVideoFps}fps` : "不限"}`,
   `渲染上限：${mediaMtxConfig.maxRenderWidth || "原始"}×${mediaMtxConfig.maxRenderHeight || "原始"}`,
   `解码队列：${mediaMtxConfig.maxVideoDecodeQueueSize}`,
+  `启动错峰：${mediaMtxConfig.startupStaggerMs}ms`,
 ]);
 
 const entriesList = computed(() => Array.from(entries.value.values()));

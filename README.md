@@ -2,7 +2,9 @@
 
 一个基于 **Vue 3 + Vite + 浏览器原生 WebRTC API / WebTransport + WebCodecs** 的 MediaMTX RTSP 监控接收端示例。项目用于验证 RTSP 摄像头、编码器或其他 RTSP 源经 MediaMTX 转换为 WebRTC 或 Media-over-QUIC 后，能否在浏览器中稳定播放。
 
-![效果图](src/assets/demo.jpg)
+![效果图-webrtc](src/assets/webrtc.jpg)
+
+![效果图-quic](src/assets/quic.png)
 
 ![MediaMTX WebRTC 链路图](src/assets/mediamtx-webrtc-flow.png)
 
@@ -228,6 +230,8 @@ const { status, stream, error, attach, restart, detach } = useMediaMtxReceiver({
 
 ### 多路接收
 
+https://mediamtx.org/docs/publish/webrtc-clients
+
 ```ts
 import { useMediaMtxReceivers } from "./composables/mediamtx/webrtc";
 
@@ -248,6 +252,8 @@ useMediaMtxReceiver({
 ```
 
 ### QUIC / MoQ 接收
+
+https://mediamtx.org/docs/publish/moq-clients
 
 MediaMTX v1.19.0 新增 MoQ(Media over QUIC) 浏览器读流能力。服务端需要开启你给出的 MoQ 配置，其中 HTTPS2 与 HTTPS3 默认都监听 `:8892`：
 

@@ -59,7 +59,8 @@ export class MediaMTXMoQReader {
   static #AUDIO_REQUEST_ID = BigInt(11);
 
   static #MAX_VIDEO_REORDERED_SUBGROUPS = 8;
-  static #DEFAULT_MAX_VIDEO_FRAMES_IN_DECODER = 2;
+  static #DEFAULT_MAX_VIDEO_FRAMES_IN_DECODER = 8;
+  static #MAX_CONSECUTIVE_VIDEO_DECODER_ERRORS = 3;
 
   static #MAX_AUDIO_REORDERED_SUBGROUPS = 50;
   static #MAX_AUDIO_FRAMES_IN_DECODER = 10;
@@ -81,8 +82,13 @@ export class MediaMTXMoQReader {
   #videoNeedsKeyFrame = true;
   #videoCanvas = null;
   #videoDecoder = null;
+  #createVideoDecoder = null;
   #videoReorderer = null;
+  #pendingVideoFrame = null;
+  #videoRenderAnimationFrame = null;
   #lastVideoDecodeTime = 0;
+  #lastVideoRenderTime = 0;
+  #consecutiveVideoDecoderErrors = 0;
   #audioTrack = null;
   #audioCtx = null;
   #audioDecoder = null;
@@ -95,7 +101,7 @@ export class MediaMTXMoQReader {
   constructor(conf) {
     this.#conf = {
       enableAudio: false,
-      maxVideoFps: 15,
+      maxVideoFps: 30,
       maxRenderWidth: 960,
       maxRenderHeight: 540,
       maxVideoDecodeQueueSize: MediaMTXMoQReader.#DEFAULT_MAX_VIDEO_FRAMES_IN_DECODER,
@@ -131,6 +137,8 @@ export class MediaMTXMoQReader {
       this.#wt.close();
       this.#wt = null;
     }
+
+    this.#clearPendingVideoFrame();
 
     if (this.#videoDecoder !== null) {
       try {
@@ -172,6 +180,18 @@ export class MediaMTXMoQReader {
     }
   }
 
+  #clearPendingVideoFrame() {
+    if (this.#videoRenderAnimationFrame !== null) {
+      window.cancelAnimationFrame(this.#videoRenderAnimationFrame);
+      this.#videoRenderAnimationFrame = null;
+    }
+
+    if (this.#pendingVideoFrame !== null) {
+      this.#pendingVideoFrame.close();
+      this.#pendingVideoFrame = null;
+    }
+  }
+
   #start() {
     this.#fetchFingerprint()
       .then(() => this.#connect())
@@ -191,6 +211,8 @@ export class MediaMTXMoQReader {
         this.#wt.close();
         this.#wt = null;
       }
+
+      this.#clearPendingVideoFrame();
 
       if (this.#videoDecoder !== null) {
         try {
@@ -225,6 +247,8 @@ export class MediaMTXMoQReader {
       this.#videoParams = null;
       this.#videoConfigured = false;
       this.#videoNeedsKeyFrame = true;
+      this.#consecutiveVideoDecoderErrors = 0;
+      this.#createVideoDecoder = null;
       this.#videoReorderer = null;
       this.#audioTrack = null;
       this.#audioReorderer = null;
@@ -676,39 +700,25 @@ export class MediaMTXMoQReader {
         ctxGL.uniform1i(ctxGL.getUniformLocation(prog, "u_tex"), 0);
       }
 
-      this.#videoDecoder = new VideoDecoder({
+      this.#createVideoDecoder = () => new VideoDecoder({
         output: (frame) => {
-          const renderSize = this.#renderSize(frame.displayWidth, frame.displayHeight);
-          if (
-            this.#videoCanvas.width !== renderSize.width ||
-            this.#videoCanvas.height !== renderSize.height
-          ) {
-            this.#videoCanvas.width = renderSize.width;
-            this.#videoCanvas.height = renderSize.height;
+          this.#consecutiveVideoDecoderErrors = 0;
 
-            if (ctxGL !== null) {
-              ctxGL.viewport(0, 0, renderSize.width, renderSize.height);
-            }
+          if (this.#pendingVideoFrame !== null) {
+            this.#pendingVideoFrame.close();
           }
+          this.#pendingVideoFrame = frame;
 
-          if (ctxGL !== null) {
-            ctxGL.texImage2D(
-              ctxGL.TEXTURE_2D,
-              0,
-              ctxGL.RGBA,
-              ctxGL.RGBA,
-              ctxGL.UNSIGNED_BYTE,
-              frame,
-            );
-            ctxGL.drawArrays(ctxGL.TRIANGLE_STRIP, 0, 4);
-          } else {
-            ctx2D.drawImage(frame, 0, 0, renderSize.width, renderSize.height);
+          if (this.#videoRenderAnimationFrame === null) {
+            this.#videoRenderAnimationFrame = window.requestAnimationFrame(() => {
+              this.#videoRenderAnimationFrame = null;
+              this.#renderPendingVideoFrame(ctxGL, ctx2D);
+            });
           }
-
-          frame.close();
         },
-        error: (err) => this.#handleError(err.message),
+        error: (err) => this.#handleVideoDecoderError(err),
       });
+      this.#videoDecoder = this.#createVideoDecoder();
 
       const config = {
         codec: track.codec,
@@ -846,8 +856,82 @@ export class MediaMTXMoQReader {
     }
   }
 
-  #decodeVideo(data, groupId) {
+  #renderPendingVideoFrame(ctxGL, ctx2D) {
+    const frame = this.#pendingVideoFrame;
+    if (frame === null || this.#videoCanvas === null) {
+      return;
+    }
+    this.#pendingVideoFrame = null;
+
     const now = performance.now();
+    const minRenderInterval = this.#conf.maxVideoFps > 0 ? 1000 / this.#conf.maxVideoFps : 0;
+    if (minRenderInterval > 0 && now - this.#lastVideoRenderTime < minRenderInterval) {
+      frame.close();
+      return;
+    }
+    this.#lastVideoRenderTime = now;
+
+    const renderSize = this.#renderSize(frame.displayWidth, frame.displayHeight);
+    if (this.#videoCanvas.width !== renderSize.width || this.#videoCanvas.height !== renderSize.height) {
+      this.#videoCanvas.width = renderSize.width;
+      this.#videoCanvas.height = renderSize.height;
+
+      if (ctxGL !== null) {
+        ctxGL.viewport(0, 0, renderSize.width, renderSize.height);
+      }
+    }
+
+    if (ctxGL !== null) {
+      ctxGL.texImage2D(
+        ctxGL.TEXTURE_2D,
+        0,
+        ctxGL.RGBA,
+        ctxGL.RGBA,
+        ctxGL.UNSIGNED_BYTE,
+        frame,
+      );
+      ctxGL.drawArrays(ctxGL.TRIANGLE_STRIP, 0, 4);
+    } else {
+      ctx2D.drawImage(frame, 0, 0, renderSize.width, renderSize.height);
+    }
+
+    frame.close();
+  }
+
+  #handleVideoDecoderError(err) {
+    const message = err instanceof Error ? err.message : String(err);
+    this.#consecutiveVideoDecoderErrors++;
+    this.#log("video decoder error:", message);
+    this.#clearPendingVideoFrame();
+
+    if (this.#consecutiveVideoDecoderErrors >= MediaMTXMoQReader.#MAX_CONSECUTIVE_VIDEO_DECODER_ERRORS) {
+      this.#handleError(message);
+      return;
+    }
+
+    if (this.#conf.onError !== undefined) {
+      this.#conf.onError(message);
+    }
+
+    try {
+      this.#videoDecoder?.close();
+    } catch (e) {}
+
+    this.#videoDecoder = this.#createVideoDecoder?.() ?? null;
+    if (/^(avc3|hev1)/.test(this.#videoTrack?.codec ?? "")) {
+      this.#videoConfigured = false;
+      this.#videoParams = null;
+    } else if (this.#videoTrack !== null && this.#videoDecoder !== null) {
+      this.#videoDecoder.configure({
+        codec: this.#videoTrack.codec,
+        optimizeForLatency: true,
+      });
+      this.#videoConfigured = true;
+    }
+    this.#videoNeedsKeyFrame = true;
+  }
+
+  #decodeVideo(data, groupId) {
     let chunkType = "key";
 
     if (/^(avc3)/.test(this.#videoTrack.codec)) {
@@ -934,8 +1018,10 @@ export class MediaMTXMoQReader {
       }
     }
 
-    const minFrameInterval = this.#conf.maxVideoFps > 0 ? 1000 / this.#conf.maxVideoFps : 0;
-    if (chunkType === "delta" && minFrameInterval > 0 && now - this.#lastVideoDecodeTime < minFrameInterval) {
+    const now = performance.now();
+    const minDecodeInterval = this.#conf.maxVideoFps > 0 ? 1000 / (this.#conf.maxVideoFps * 2) : 0;
+    if (!this.#videoNeedsKeyFrame && minDecodeInterval > 0 && now - this.#lastVideoDecodeTime < minDecodeInterval) {
+      this.#log("skipping video frame, decode rate limit reached");
       return;
     }
 
@@ -945,7 +1031,7 @@ export class MediaMTXMoQReader {
       return;
     }
 
-    const timestamp = performance.now() * 1000;
+    const timestamp = now * 1000;
     try {
       this.#videoDecoder.decode(
         new EncodedVideoChunk({ type: chunkType, timestamp, data }),
@@ -962,6 +1048,7 @@ export class MediaMTXMoQReader {
     }
 
     this.#lastVideoDecodeTime = now;
+
     if (chunkType === "key") {
       this.#videoNeedsKeyFrame = false;
     }

@@ -27,10 +27,11 @@ const DEFAULT_CONFIG: MediaMtxQuicEnvConfig = {
   streamPaths: ["camera1", "camera2"],
   requestTimeoutMs: 10_000,
   enableAudio: false,
-  maxVideoFps: 15,
+  maxVideoFps: 30,
   maxRenderWidth: 960,
   maxRenderHeight: 540,
-  maxVideoDecodeQueueSize: 2,
+  maxVideoDecodeQueueSize: 8,
+  startupStaggerMs: 350,
   debug: false,
   readPathTemplate: "/{path}/",
   moqPathTemplate: "/{path}/moq",
@@ -104,6 +105,10 @@ export function getMediaMtxQuicConfig(overrides: Partial<MediaMtxQuicEnvConfig> 
     maxVideoDecodeQueueSize: parseTimeout(
       getFirstEnv("VITE_MEDIAMTX_QUIC_MAX_VIDEO_DECODE_QUEUE_SIZE"),
       DEFAULT_CONFIG.maxVideoDecodeQueueSize
+    ),
+    startupStaggerMs: parseNonNegativeNumber(
+      getFirstEnv("VITE_MEDIAMTX_QUIC_STARTUP_STAGGER_MS"),
+      DEFAULT_CONFIG.startupStaggerMs
     ),
     debug: parseBoolean(getFirstEnv("VITE_MEDIAMTX_QUIC_DEBUG"), DEFAULT_CONFIG.debug),
     readPathTemplate: getFirstEnv("VITE_MEDIAMTX_QUIC_READ_PATH_TEMPLATE") ?? DEFAULT_CONFIG.readPathTemplate,
