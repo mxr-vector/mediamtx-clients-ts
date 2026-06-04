@@ -72,7 +72,7 @@ export interface UseMediaMtxReceiverReturn {
  * @example
  * ```vue
  * <script setup>
- * import { useMediaMtxReceiver } from './composables/mediamtx'
+ * import { useMediaMtxReceiver } from './composables/mediamtx/webrtc'
  * 
  * const { status, stream, error, attach, restart } = useMediaMtxReceiver({
  *   path: 'camera1',

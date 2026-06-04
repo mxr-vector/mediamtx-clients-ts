@@ -82,7 +82,7 @@ function normalizeStreams(streams?: MediaMtxStreamConfig[]): Required<Pick<Media
  * @example
  * ```vue
  * <script setup>
- * import { useMediaMtxReceivers } from './composables/mediamtx'
+ * import { useMediaMtxReceivers } from './composables/mediamtx/webrtc'
  * 
  * const { entries, attach, restart } = useMediaMtxReceivers([
  *   { id: 'cam1', path: 'camera1', label: 'CAM-01 前门' },
