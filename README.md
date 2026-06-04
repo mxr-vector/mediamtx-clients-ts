@@ -1,6 +1,6 @@
 # webrtc-mediamtx
 
-一个基于 **Vue 3 + Vite + 浏览器原生 WebRTC API** 的 MediaMTX RTSP 监控接收端示例。项目用于验证 RTSP 摄像头、编码器或其他 RTSP 源经 MediaMTX 转换为 WebRTC 后，能否在浏览器中以多路视频墙形式稳定播放。
+一个基于 **Vue 3 + Vite + 浏览器原生 WebRTC API / WebTransport + WebCodecs** 的 MediaMTX RTSP 监控接收端示例。项目用于验证 RTSP 摄像头、编码器或其他 RTSP 源经 MediaMTX 转换为 WebRTC 或 Media-over-QUIC 后，能否在浏览器中稳定播放。
 
 ![效果图](src/assets/demo.jpg)
 
@@ -8,13 +8,10 @@
 
 ## 项目定位
 
-本项目只实现浏览器接收端，不包含 RTSP 推流端，也不自建 WebSocket / Socket.io 信令服务。客户端直接调用 MediaMTX 暴露的 WebRTC/WHEP HTTP 读流接口：
+本项目只实现浏览器接收端，不包含 RTSP 推流端，也不自建 WebSocket / Socket.io 信令服务。客户端支持两类 MediaMTX 浏览器读流接口：
 
-1. 浏览器创建 receive-only `RTCPeerConnection`。
-2. 客户端向 MediaMTX 的 `/{path}/whep` endpoint 发送 SDP offer。
-3. MediaMTX 返回 SDP answer。
-4. WebRTC ICE/DTLS/SRTP 建链后，浏览器接收媒体流。
-5. Vue composable 将 `MediaStream` 绑定到页面 `<video>` 元素。
+- WebRTC/WHEP：浏览器创建 receive-only `RTCPeerConnection`，向 `/{path}/whep` 发送 SDP offer，MediaMTX 返回 SDP answer，ICE/DTLS/SRTP 建链后将 `MediaStream` 绑定到 `<video>`。
+- QUIC/MoQ：MediaMTX v1.19.0 的 Media-over-QUIC 读流，浏览器通过 WebTransport 连接 `/{path}/moq`，再用 WebCodecs 解码并渲染到 canvas。
 
 适合以下场景：
 
@@ -25,11 +22,12 @@
 ## 功能特性
 
 - 基于 MediaMTX WebRTC/WHEP HTTP 接口完成 SDP offer/answer 协商。
+- 支持 MediaMTX v1.19.0 MoQ(Media over QUIC) 浏览器读流。
 - 不依赖自建信令服务器，浏览器直接和 MediaMTX 交互。
-- 支持多路 RTSP path 同屏展示，默认示例为 `camera1,camera2`。
+- 支持多路 RTSP path 同屏展示，默认示例为 `stream/camera1,stream/camera2`。
 - 提供单路与多路 Vue composable：
-  - `useMediaMtxReceiver`：管理单个视频流。
-  - `useMediaMtxReceivers`：管理多个视频流。
+  - `useMediaMtxReceiver` / `useMediaMtxReceivers`：管理 WebRTC 视频流。
+  - `useMediaMtxQuicReceiver` / `useMediaMtxQuicReceivers`：管理 QUIC/MoQ 视频流。
 - 支持通过 `.env` 配置 MediaMTX 协议、主机、端口、流 path、WHEP endpoint 模板、请求超时和 STUN/TURN。
 - 页面展示每路视频的连接状态、错误信息和手动重连按钮。
 - 自动在组件卸载时释放 `RTCPeerConnection`、媒体轨道和视频元素资源。
@@ -40,7 +38,9 @@
 - Vite
 - TypeScript
 - MediaMTX WebRTC / WHEP
+- MediaMTX Media-over-QUIC / MoQ
 - Browser `RTCPeerConnection`
+- Browser WebTransport / WebCodecs
 
 职责划分：
 
@@ -56,7 +56,7 @@
 - Node.js
 - pnpm
 - 可访问的 MediaMTX 服务，WebRTC HTTP 端口通常为 `8889`
-- MediaMTX 中已存在与 `.env` 一致的 stream path，例如 `camera1`、`camera2`
+- MediaMTX 中已存在与 `.env` 一致的 stream path，例如 `stream/camera1`、`stream/camera2`
 
 > 代码内置回退地址为 `http://198.18.0.1:8889`；当前 `.env.example` 示例主机为 `198.168.245.213`。实际运行时请以你本机 `.env` 或 `.env.development` 中的配置为准。
 
@@ -71,13 +71,13 @@ pnpm install
 复制并调整环境变量：
 
 ```bash
-cp .env.example .env
+cp .env.example .env.development
 ```
 
 启动开发服务器：
 
 ```bash
-pnpm dev
+pnpm run dev
 ```
 
 当前 Vite 已配置为监听 `0.0.0.0`，除本机 `http://localhost:5173` 外，也可以在同一局域网设备上访问：
@@ -103,19 +103,32 @@ VITE_MEDIAMTX_WEBRTC_PORT=8889
 # MediaMTX stream path. It must match a path configured in mediamtx.yml.
 VITE_MEDIAMTX_DEFAULT_PATH=camera1
 # Multiple paths for the demo grid. Separate with commas.
-VITE_MEDIAMTX_STREAM_PATHS=camera1,camera2
+VITE_MEDIAMTX_STREAM_PATHS=stream/camera1,stream/camera2
 
 VITE_MEDIAMTX_REQUEST_TIMEOUT_MS=10000
 
 # Comma-separated STUN URLs passed to RTCPeerConnection.
 VITE_WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
 
-# Optional TURN fallback. TURN may relay media traffic and increase bandwidth cost.
-# off | fallback | include
+# Optional TURN fallback for restrictive NAT/firewall environments.
+# TURN can relay media traffic when selected, which may increase bandwidth cost.
+# Modes:
+#   off      - never use TURN from env config (default, lowest cost)
+#   fallback - try STUN/default first, retry once with TURN after failure
+#   include  - include TURN in the first connection attempt
 VITE_WEBRTC_TURN_MODE=off
+# Example: turn:turn.example.com:3478,turns:turn.example.com:5349
 VITE_WEBRTC_TURN_URLS=
 VITE_WEBRTC_TURN_USERNAME=
 VITE_WEBRTC_TURN_CREDENTIAL=
+
+# MediaMTX v1.19.0 MoQ / Media-over-QUIC receiver config.
+VITE_MEDIAMTX_QUIC_PROTOCOL=https
+VITE_MEDIAMTX_QUIC_HOST=198.168.245.213
+VITE_MEDIAMTX_QUIC_HTTPS2_PORT=8892
+VITE_MEDIAMTX_QUIC_HTTPS3_PORT=8892
+# Optional, defaults to VITE_MEDIAMTX_STREAM_PATHS if empty.
+VITE_MEDIAMTX_QUIC_STREAM_PATHS=
 ```
 
 可选配置项：
@@ -134,6 +147,11 @@ VITE_WEBRTC_TURN_CREDENTIAL=
 | `VITE_WEBRTC_TURN_URLS` | TURN URL，逗号分隔，例如 `turn:turn.example.com:3478,turns:turn.example.com:5349`。为空时不会加入环境 TURN。 | 空 |
 | `VITE_WEBRTC_TURN_USERNAME` | TURN 用户名，常见 TURN 服务需要。 | 空 |
 | `VITE_WEBRTC_TURN_CREDENTIAL` | TURN 凭证，常见 TURN 服务需要。 | 空 |
+| `VITE_MEDIAMTX_QUIC_PROTOCOL` | QUIC/MoQ 协议，强制使用 `https`（WebTransport 要求安全上下文）。 | `https` |
+| `VITE_MEDIAMTX_QUIC_HOST` | QUIC/MoQ 主机或 IP，回退到 `VITE_MEDIAMTX_HOST`。 | `198.18.0.1` |
+| `VITE_MEDIAMTX_QUIC_HTTPS2_PORT` | QUIC HTTPS2 端口，承载 fingerprint、读流页面等 HTTP/2 接口。 | `8892` |
+| `VITE_MEDIAMTX_QUIC_HTTPS3_PORT` | QUIC HTTPS3 端口，承载 WebTransport MoQ endpoint（UDP）。 | `8892` |
+| `VITE_MEDIAMTX_QUIC_STREAM_PATHS` | QUIC/MoQ 多路流路径，逗号分隔。为空时回退到 `VITE_MEDIAMTX_STREAM_PATHS`。 | 空 |
 
 常用调整：
 
@@ -174,9 +192,7 @@ paths:
 
 ### OBS推流到mediaMTX
 
-默认使用x264，mediamtx不接受b帧
-x264opts   bframes=0:keyint=30:no-scenecut  强制无 B 帧
-![obs推流到mediaMTX](src/assets//obs.png)
+默认使用x264，mediamtx不接受b帧x264opts bframes=0:keyint=30:no-scenecut 强制无 B 帧 ![obs推流到mediaMTX](src/assets//obs.png)
 
 ### FFmpeg推流到mediaMTX
 
@@ -229,6 +245,55 @@ const { entries, attach, restart, detachAll } = useMediaMtxReceivers([
 useMediaMtxReceiver({
   endpointUrl: "http://198.18.0.1:8889/camera1/whep",
 });
+```
+
+### QUIC / MoQ 接收
+
+MediaMTX v1.19.0 新增 MoQ(Media over QUIC) 浏览器读流能力。服务端需要开启你给出的 MoQ 配置，其中 HTTPS2 与 HTTPS3 默认都监听 `:8892`：
+
+```yaml
+moq: true
+moqHTTPS2Address: :8892
+moqHTTPS3Address: :8892
+moqServerKey: auto.key
+moqServerCert: auto.crt
+moqAllowOrigins: ["*"]
+```
+
+前端 QUIC/MoQ 默认读取：
+
+- `https://<host>:8892/{path}/fingerprint`：获取自签证书 fingerprint。
+- `https://<host>:8892/{path}/moq`：WebTransport / MoQ endpoint，浏览器需要能访问 UDP `8892`。
+- `https://<host>:8892/{path}/`：MediaMTX 自带 MoQ 读流页面。
+
+```ts
+import { useMediaMtxQuicReceiver } from "./composables/mediamtx/quic";
+
+const { status, info, error, audioMuted, attach, restart, unmute } = useMediaMtxQuicReceiver({
+  path: "camera1",
+});
+```
+
+模板中绑定的是容器元素，MoQ reader 会在容器内创建 canvas：
+
+```vue
+<div :ref="(el) => el && attach(el as HTMLElement)" class="moq-video" />
+<button type="button" @click="restart">重连</button>
+<button v-if="audioMuted" type="button" @click="unmute">开启声音</button>
+<p>状态：{{ status }}</p>
+<p v-if="info">音频：{{ info.hasAudio ? "有" : "无" }}</p>
+<p v-if="error">{{ error.message }}</p>
+```
+
+多路 QUIC/MoQ：
+
+```ts
+import { useMediaMtxQuicReceivers } from "./composables/mediamtx/quic";
+
+const { entries, attach, restart, unmute, detachAll } = useMediaMtxQuicReceivers([
+  { id: "camera1", path: "camera1", label: "正面" },
+  { id: "camera2", path: "camera2", label: "背面" },
+]);
 ```
 
 ### 自定义 ICE / TURN
@@ -301,7 +366,7 @@ pnpm build
 pnpm preview
 ```
 
-如果没有可用的 live MediaMTX / RTSP 源，仍可运行 `pnpm build` 验证前端代码和打包流程；实际播放验证需要可访问的 MediaMTX 服务与有效 stream path。
+如果没有可用的 live MediaMTX / RTSP 源，仍可运行 `pnpm build` 验证前端代码和打包流程；实际播放验证需要可访问的 MediaMTX 服务与有效 stream path。QUIC/MoQ 实际播放还需要 MediaMTX v1.19.0+、开启 `moq: true`、HTTPS2/TCP `8892` 和 HTTPS3/UDP `8892` 均可访问。
 
 ## 项目结构
 
@@ -312,20 +377,29 @@ pnpm preview
 │   └── icons.svg
 ├── src/
 │   ├── assets/
-│   │   └── mediamtx-webrtc-flow.svg   # README 架构图
+│   │   └── mediamtx-webrtc-flow.png   # README 架构图
 │   ├── components/
 │   │   └── ExampleDashboard.vue       # 多路视频监控示例页面
 │   ├── composables/
 │   │   └── mediamtx/
+│   │       ├── config.ts              # 协议公共配置工具
 │   │       ├── index.ts               # 协议模块兼容导出
-│   │       ├── quic/                  # QUIC 协议实现预留目录
+│   │       ├── types.ts               # 协议公共类型
+│   │       ├── quic/
+│   │       │   ├── client.ts                  # MediaMTX MoQ/WebTransport 客户端
+│   │       │   ├── config.ts                  # MoQ URL 与端口配置
+│   │       │   ├── index.ts                   # QUIC/MoQ 对外导出
+│   │       │   ├── reader.ts                  # MoQ reader(WebTransport + WebCodecs)
+│   │       │   ├── types.ts                   # QUIC/MoQ 类型定义
+│   │       │   ├── useMediaMtxQuicReceiver.ts # 单路 QUIC Vue composable
+│   │       │   └── useMediaMtxQuicReceivers.ts# 多路 QUIC Vue composable
 │   │       └── webrtc/
-│   │           ├── client.ts              # MediaMTX WHEP/WebRTC 协商客户端
-│   │           ├── config.ts              # Vite 环境变量解析与 WHEP URL 构建
-│   │           ├── index.ts               # WebRTC 对外导出
-│   │           ├── types.ts               # WebRTC 类型定义
-│   │           ├── useMediaMtxReceiver.ts # 单路 Vue composable
-│   │           └── useMediaMtxReceivers.ts# 多路 Vue composable
+│   │           ├── client.ts                  # MediaMTX WHEP/WebRTC 协商客户端
+│   │           ├── config.ts                  # WebRTC 环境变量解析与 WHEP URL 构建
+│   │           ├── index.ts                   # WebRTC 对外导出
+│   │           ├── types.ts                   # WebRTC 类型定义
+│   │           ├── useMediaMtxReceiver.ts     # 单路 Vue composable
+│   │           └── useMediaMtxReceivers.ts    # 多路 Vue composable
 │   ├── App.vue
 │   └── main.ts
 ├── .env.example
@@ -348,8 +422,9 @@ pnpm preview
 ### Mixed content / CORS / HTTPS 问题
 
 - 如果前端页面通过 HTTPS 打开，而 MediaMTX endpoint 是 HTTP，浏览器可能拦截请求。
-- 内网测试建议前端和 MediaMTX 都使用 HTTP。
+- WebRTC 内网测试建议前端和 MediaMTX 都使用 HTTP。
 - 生产环境建议为 MediaMTX 配置 HTTPS，或通过同源反向代理转发 WHEP 请求。
+- QUIC/MoQ 的 WebTransport 要求 HTTPS；如果使用 `auto.crt` 自签证书，需要先让浏览器信任/访问 `https://<host>:8892/{path}/`，并确保 UDP `8892` 未被防火墙拦截。
 
 ### 视频未自动播放
 
@@ -370,11 +445,9 @@ pnpm preview
 - 优先使用浏览器普遍支持的 H.264 配置。
 - 打开浏览器 WebRTC internals / 媒体面板，确认是否收到 video track 和数据包。
 
-
 ### 本地测试正常，局域网/远程访问mediaMTX无响应
 
 https://mediamtx.org/docs/features/webrtc-specific-features#solving-webrtc-connectivity-issues
-
 
 ## 许可证
 
