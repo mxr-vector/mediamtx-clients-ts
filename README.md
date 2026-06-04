@@ -22,6 +22,19 @@
 
 ## 快速开始
 
+| 端口       | 协议  | 功能              | 是否必须公网开放  | 说明                        |
+| -------- | --- | --------------- | --------- | ------------------------- |
+| **1935** | TCP | RTMP            | 推流时需要     | OBS、FFmpeg、摄像头等通过 RTMP 推流 |
+| **8554** | TCP | RTSP            | RTSP客户端需要 | VLC、FFplay、NVR等拉流         |
+| **8888** | TCP | HTTP API / HLS  | HLS播放需要   | HLS播放器访问 `.m3u8`          |
+| **8889** | TCP | WebRTC HTTP信令   | WebRTC需要  | WHEP/WHIP 请求、SDP交换        |
+| **8892** | TCP | MoQ HTTPS/HTTP2 | 使用MoQ时需要  | Media over QUIC 控制连接      |
+| **8189** | UDP | WebRTC ICE Host | WebRTC需要  | ICE Candidate 数据传输        |
+| **8890** | UDP | WebRTC ICE Host | WebRTC需要  | RTP/RTCP媒体流传输             |
+| **8892** | UDP | MoQ HTTP3/QUIC  | 使用MoQ时需要  | MoQ媒体传输                   |
+
+![port](src/assets//port.png)
+
 ```bash
 pnpm install
 cp .env.example .env.development
