@@ -11,7 +11,7 @@ import {
   getMediaMtxConfig,
   useMediaMtxReceivers,
   type MediaMtxStreamConfig,
-} from "../composables/mediamtx";
+} from "../composables/mediamtx/webrtc";
 
 /**
  * 获取 MediaMTX 配置

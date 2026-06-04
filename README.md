@@ -194,7 +194,7 @@ ffmpeg -re -stream_loop -1 -i 1.mp4 \
 ### 单路接收
 
 ```ts
-import { useMediaMtxReceiver } from "./composables/mediamtx";
+import { useMediaMtxReceiver } from "./composables/mediamtx/webrtc";
 
 const { status, stream, error, attach, restart, detach } = useMediaMtxReceiver({
   path: "camera1",
@@ -213,7 +213,7 @@ const { status, stream, error, attach, restart, detach } = useMediaMtxReceiver({
 ### 多路接收
 
 ```ts
-import { useMediaMtxReceivers } from "./composables/mediamtx";
+import { useMediaMtxReceivers } from "./composables/mediamtx/webrtc";
 
 const { entries, attach, restart, detachAll } = useMediaMtxReceivers([
   { id: "camera1", path: "camera1", label: "正面" },
@@ -317,12 +317,15 @@ pnpm preview
 │   │   └── ExampleDashboard.vue       # 多路视频监控示例页面
 │   ├── composables/
 │   │   └── mediamtx/
-│   │       ├── client.ts              # MediaMTX WHEP/WebRTC 协商客户端
-│   │       ├── config.ts              # Vite 环境变量解析与 WHEP URL 构建
-│   │       ├── index.ts               # 对外导出
-│   │       ├── types.ts               # 类型定义
-│   │       ├── useMediaMtxReceiver.ts # 单路 Vue composable
-│   │       └── useMediaMtxReceivers.ts# 多路 Vue composable
+│   │       ├── index.ts               # 协议模块兼容导出
+│   │       ├── quic/                  # QUIC 协议实现预留目录
+│   │       └── webrtc/
+│   │           ├── client.ts              # MediaMTX WHEP/WebRTC 协商客户端
+│   │           ├── config.ts              # Vite 环境变量解析与 WHEP URL 构建
+│   │           ├── index.ts               # WebRTC 对外导出
+│   │           ├── types.ts               # WebRTC 类型定义
+│   │           ├── useMediaMtxReceiver.ts # 单路 Vue composable
+│   │           └── useMediaMtxReceivers.ts# 多路 Vue composable
 │   ├── App.vue
 │   └── main.ts
 ├── .env.example
