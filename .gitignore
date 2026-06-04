@@ -30,4 +30,7 @@ dist-ssr
 
 # AI
 .claude
+.codex
 .qoder
+.openspec
+.codegraph

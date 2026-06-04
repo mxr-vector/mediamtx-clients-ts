@@ -69,5 +69,6 @@ export type {
   MediaMtxReceiverOptions,
   MediaMtxReceiverStatus,
   MediaMtxStreamConfig,
+  MediaMtxTurnMode,
 } from "./types";
 export type { MediaMtxWhepReceiverConfig } from "./client";

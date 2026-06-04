@@ -63,6 +63,14 @@ export class MediaMtxWhepReceiver {
   private status: MediaMtxReceiverStatus = "idle";
   /** 远程媒体流 */
   private remoteStream: MediaStream | null = null;
+  /** 是否已连接成功 */
+  private hasConnected = false;
+  /** 是否已经尝试过 TURN fallback */
+  private hasTriedTurnFallback = false;
+  /** 当前连接是否允许失败后切换到 TURN */
+  private canFallbackToTurn = false;
+  /** TURN fallback 使用的 RTC 配置 */
+  private fallbackRtcConfig: RTCConfiguration | null = null;
   /** 合并后的配置(包含默认值) */
   private readonly config: Required<Pick<MediaMtxWhepReceiverConfig, "autoplay" | "muted">> &
     MediaMtxWhepReceiverConfig;
@@ -96,13 +104,83 @@ export class MediaMtxWhepReceiver {
   async start(): Promise<void> {
     // 停止之前的连接(如果是重连)
     this.stop("restart");
-    this._setStatus("preparing");
+    this.hasConnected = false;
+    this.hasTriedTurnFallback = false;
+    this.canFallbackToTurn = false;
+    this.fallbackRtcConfig = null;
 
     // 获取配置并创建 WebRTC 连接
     const envConfig = getMediaMtxConfig(this.config.config);
     const endpointUrl = buildMediaMtxWhepUrl(this.config);
-    const rtcConfig = this.config.rtcConfig ?? { iceServers: envConfig.iceServers };
+    const turnMode = envConfig.turnMode ?? "off";
+    const stunIceServers = envConfig.stunIceServers ?? envConfig.iceServers;
+    const turnIceServers = envConfig.turnIceServers ?? [];
+    const hasTurnServers = turnIceServers.length > 0;
+    const stunOnlyRtcConfig: RTCConfiguration = { iceServers: stunIceServers };
+    const withTurnRtcConfig: RTCConfiguration = {
+      iceServers: [...stunIceServers, ...turnIceServers],
+    };
+    const rtcConfig = this.config.rtcConfig
+      ?? (turnMode === "fallback" && hasTurnServers ? stunOnlyRtcConfig : { iceServers: envConfig.iceServers });
+
+    if (!this.config.rtcConfig && turnMode === "fallback" && hasTurnServers) {
+      this.canFallbackToTurn = true;
+      this.fallbackRtcConfig = withTurnRtcConfig;
+    }
+
+    try {
+      await this._startAttempt(endpointUrl, envConfig.requestTimeoutMs, rtcConfig);
+    } catch (error) {
+      if (this._canUseTurnFallback()) {
+        await this._retryWithTurnFallback(endpointUrl, envConfig.requestTimeoutMs);
+        return;
+      }
+
+      this._fail(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
+  }
+
+  /**
+   * 执行一次 WebRTC WHEP 连接尝试
+   *
+   * @param endpointUrl - WHEP 端点 URL
+   * @param requestTimeoutMs - WHEP 请求超时时间
+   * @param rtcConfig - 本次尝试使用的 RTC 配置
+   */
+  private async _startAttempt(endpointUrl: string, requestTimeoutMs: number, rtcConfig: RTCConfiguration): Promise<void> {
+    this._setStatus("preparing");
+
     const pc = new RTCPeerConnection(rtcConfig);
+    let settled = false;
+    let attemptError: Error | null = null;
+    let resolveAttempt: () => void = () => undefined;
+    let rejectAttempt: (error: Error) => void = () => undefined;
+    const attemptPromise = new Promise<void>((resolve, reject) => {
+      resolveAttempt = resolve;
+      rejectAttempt = reject;
+    });
+    void attemptPromise.catch(() => undefined);
+
+    const isCurrentPc = () => this.pc === pc;
+    const resolveConnected = () => {
+      if (!isCurrentPc() || settled) return;
+      settled = true;
+      this.hasConnected = true;
+      this.canFallbackToTurn = false;
+      resolveAttempt();
+    };
+    const rejectBeforeConnected = (error: Error) => {
+      if (!isCurrentPc()) return;
+      if (this.hasConnected) {
+        this._fail(error);
+        return;
+      }
+      if (settled) return;
+      settled = true;
+      attemptError = error;
+      rejectAttempt(error);
+    };
 
     // 初始化实例变量
     this.pc = pc;
@@ -118,7 +196,7 @@ export class MediaMtxWhepReceiver {
      * 当接收到远程媒体轨道时触发
      */
     pc.ontrack = (event) => {
-      if (!this.remoteStream) return;
+      if (!this.remoteStream || !isCurrentPc()) return;
 
       // 始终把远端轨道合并到同一个 MediaStream，避免音频和视频分属不同 stream 时丢失声音
       if (!this.remoteStream.getTracks().some((track) => track.id === event.track.id)) {
@@ -129,6 +207,7 @@ export class MediaMtxWhepReceiver {
       this._attachStream(this.remoteStream);
       this._setStatus("connected");
       this.config.onConnected?.(this.remoteStream);
+      resolveConnected();
     };
 
     /**
@@ -136,13 +215,17 @@ export class MediaMtxWhepReceiver {
      * 监控 ICE 连接的建立和断开
      */
     pc.oniceconnectionstatechange = () => {
+      if (!isCurrentPc()) return;
       const state = pc.iceConnectionState;
-      if (state === "connected" || state === "completed") this._setStatus("connected");
+      if (state === "connected" || state === "completed") {
+        this._setStatus("connected");
+        resolveConnected();
+      }
       if (state === "disconnected") {
         this._setStatus("disconnected");
         this.config.onDisconnected?.("ICE disconnected");
       }
-      if (state === "failed") this._fail(new Error("WebRTC ICE connection failed"));
+      if (state === "failed") rejectBeforeConnected(new Error("WebRTC ICE connection failed"));
     };
 
     /**
@@ -150,14 +233,19 @@ export class MediaMtxWhepReceiver {
      * 监控整体连接状态
      */
     pc.onconnectionstatechange = () => {
+      if (!isCurrentPc()) return;
       const state = pc.connectionState;
-      if (state === "connected") this._setStatus("connected");
+      if (state === "connected") {
+        this._setStatus("connected");
+        resolveConnected();
+      }
       if (state === "disconnected") {
         this._setStatus("disconnected");
         this.config.onDisconnected?.("Peer connection disconnected");
       }
-      if (state === "failed") this._fail(new Error("WebRTC peer connection failed"));
-      if (state === "closed") this._setStatus("closed");
+      if (state === "failed") rejectBeforeConnected(new Error("WebRTC peer connection failed"));
+      if (state === "closed" && !this.hasConnected) rejectBeforeConnected(new Error("WebRTC peer connection closed"));
+      if (state === "closed" && this.hasConnected) this._setStatus("closed");
     };
 
     try {
@@ -178,14 +266,16 @@ export class MediaMtxWhepReceiver {
       }
 
       // 发送 offer 到 MediaMTX 服务器并获取 answer
-      const answerSdp = await this._postOffer(endpointUrl, localDescription.sdp, envConfig.requestTimeoutMs);
+      const answerSdp = await this._postOffer(endpointUrl, localDescription.sdp, requestTimeoutMs);
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
       this._setStatus("connecting");
     } catch (error) {
-      // 处理连接错误
-      this._fail(error instanceof Error ? error : new Error(String(error)));
+      if (attemptError) throw attemptError;
+      if (!settled) settled = true;
       throw error;
     }
+
+    await attemptPromise;
   }
 
   /**
@@ -200,6 +290,19 @@ export class MediaMtxWhepReceiver {
    * @param reason - 停止原因(用于状态回调)
    */
   stop(reason = "closed"): void {
+    this._cleanupConnection();
+
+    // 触发断开连接回调
+    this.config.onDisconnected?.(reason);
+    this._setStatus(reason === "restart" ? "idle" : "closed");
+  }
+
+  /**
+   * 清理当前连接资源
+   *
+   * 关闭对等连接、停止媒体轨道并清理 video，不触发状态或业务回调。
+   */
+  private _cleanupConnection(): void {
     // 取消进行中的请求
     this.abortController?.abort();
     this.abortController = null;
@@ -236,10 +339,6 @@ export class MediaMtxWhepReceiver {
       video.removeAttribute("src");
       video.load();
     }
-
-    // 触发断开连接回调
-    this.config.onDisconnected?.(reason);
-    this._setStatus(reason === "restart" ? "idle" : "closed");
   }
 
   /**
@@ -374,10 +473,48 @@ export class MediaMtxWhepReceiver {
   }
 
   /**
+   * 判断当前失败是否可以使用 TURN fallback
+   *
+   * 仅在 fallback 模式、还未连接成功、还未重试过 TURN 时允许。
+   *
+   * @returns 是否可以使用 TURN fallback
+   */
+  private _canUseTurnFallback(): boolean {
+    return this.canFallbackToTurn
+      && !this.hasConnected
+      && !this.hasTriedTurnFallback
+      && this.fallbackRtcConfig !== null;
+  }
+
+  /**
+   * 使用 TURN 配置重试一次连接
+   *
+   * 清理当前失败连接后，用 STUN + TURN ICE 服务器重新走一次 WHEP 连接流程。
+   */
+  private async _retryWithTurnFallback(endpointUrl: string, requestTimeoutMs: number): Promise<void> {
+    const rtcConfig = this.fallbackRtcConfig;
+    if (!rtcConfig) return;
+
+    this.hasTriedTurnFallback = true;
+    this.canFallbackToTurn = false;
+    this._setStatus("disconnected");
+    this._cleanupConnection();
+
+    try {
+      await this._startAttempt(endpointUrl, requestTimeoutMs, rtcConfig);
+    } catch (error) {
+      this._setStatus("failed");
+      const nextError = error instanceof Error ? error : new Error(String(error));
+      this.config.onError?.(nextError);
+      throw nextError;
+    }
+  }
+
+  /**
    * 处理连接失败
-   * 
+   *
    * 设置失败状态并触发错误回调。
-   * 
+   *
    * @param error - 错误对象
    */
   private _fail(error: Error): void {

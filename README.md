@@ -2,6 +2,8 @@
 
 一个基于 **Vue 3 + Vite + 浏览器原生 WebRTC API** 的 MediaMTX RTSP 监控接收端示例。项目用于验证 RTSP 摄像头、编码器或其他 RTSP 源经 MediaMTX 转换为 WebRTC 后，能否在浏览器中以多路视频墙形式稳定播放。
 
+![效果图](src/assets/demo.jpg)
+
 ![MediaMTX WebRTC 链路图](src/assets/mediamtx-webrtc-flow.png)
 
 ## 项目定位
@@ -105,8 +107,15 @@ VITE_MEDIAMTX_STREAM_PATHS=camera1,camera2
 
 VITE_MEDIAMTX_REQUEST_TIMEOUT_MS=10000
 
-# Comma-separated STUN/TURN URLs passed to RTCPeerConnection.
+# Comma-separated STUN URLs passed to RTCPeerConnection.
 VITE_WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
+
+# Optional TURN fallback. TURN may relay media traffic and increase bandwidth cost.
+# off | fallback | include
+VITE_WEBRTC_TURN_MODE=off
+VITE_WEBRTC_TURN_URLS=
+VITE_WEBRTC_TURN_USERNAME=
+VITE_WEBRTC_TURN_CREDENTIAL=
 ```
 
 可选配置项：
@@ -120,7 +129,11 @@ VITE_WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
 | `VITE_MEDIAMTX_STREAM_PATHS` | 页面多路视频网格使用的流 path，逗号分隔。 | `camera1,camera2` |
 | `VITE_MEDIAMTX_WHEP_PATH_TEMPLATE` | WHEP endpoint 模板，`{path}` 会替换为流路径。 | `/{path}/whep` |
 | `VITE_MEDIAMTX_REQUEST_TIMEOUT_MS` | SDP offer HTTP 请求超时时间。 | `10000` |
-| `VITE_WEBRTC_STUN_URLS` | 传给 `RTCPeerConnection` 的 STUN/TURN URL，逗号分隔。 | `stun:stun.l.google.com:19302` |
+| `VITE_WEBRTC_STUN_URLS` | 传给 `RTCPeerConnection` 的 STUN URL，逗号分隔。 | `stun:stun.l.google.com:19302` |
+| `VITE_WEBRTC_TURN_MODE` | TURN 使用模式：`off` 不使用环境 TURN；`fallback` 先 STUN/default，失败后用 TURN 重试一次；`include` 首次连接即包含 TURN。 | `off` |
+| `VITE_WEBRTC_TURN_URLS` | TURN URL，逗号分隔，例如 `turn:turn.example.com:3478,turns:turn.example.com:5349`。为空时不会加入环境 TURN。 | 空 |
+| `VITE_WEBRTC_TURN_USERNAME` | TURN 用户名，常见 TURN 服务需要。 | 空 |
+| `VITE_WEBRTC_TURN_CREDENTIAL` | TURN 凭证，常见 TURN 服务需要。 | 空 |
 
 常用调整：
 
@@ -220,6 +233,34 @@ useMediaMtxReceiver({
 
 ### 自定义 ICE / TURN
 
+默认配置使用 STUN-only，TURN 不会自动启用。TURN candidate 一旦被 ICE 选中，媒体流会经 TURN 服务器中继，可能增加带宽成本；多路视频墙场景下成本会按流路数放大。
+
+可通过环境变量启用成本可控的 TURN 模式：
+
+```dotenv
+# 默认：最低成本，不使用环境 TURN
+VITE_WEBRTC_TURN_MODE=off
+
+# 成本敏感的自动兜底：先 STUN/default，失败后用 TURN 重试一次
+VITE_WEBRTC_TURN_MODE=fallback
+VITE_WEBRTC_TURN_URLS=turn:turn.example.com:3478
+VITE_WEBRTC_TURN_USERNAME=user
+VITE_WEBRTC_TURN_CREDENTIAL=password
+
+# 复杂网络优先连通性：首次连接即包含 TURN
+VITE_WEBRTC_TURN_MODE=include
+```
+
+模式取舍：
+
+| 模式 | 行为 | 成本/连通性 |
+| --- | --- | --- |
+| `off` | 不使用环境 TURN，只使用 STUN/default ICE。 | 最低成本，适合内网/局域网。 |
+| `fallback` | 首次 STUN/default，失败后用 STUN + TURN 重试一次。 | 成本可控，适合作为 TURN 兜底。 |
+| `include` | 首次连接即包含 TURN。 | 连通性最好，但会增加 TURN allocation/keepalive 资源占用，选中 relay 后会转发媒体。 |
+
+如果需要完全手动控制 ICE 配置，可以传入 `rtcConfig`。传入后环境 TURN 模式不会再自动合并或 fallback：
+
 ```ts
 useMediaMtxReceiver({
   path: "camera1",
@@ -289,6 +330,10 @@ pnpm preview
 └── vite.config.js
 ```
 
+## webrtc服务器和coturn中继服务器安装
+
+[详见 mediaMTX，coturn安装部分](https://blog.csdn.net/m0_50913327/article/details/123583266?sharetype=blogdetail&sharerId=123583266&sharerefer=PC&sharesource=m0_50913327&spm=1011.2480.3001.8118)
+
 ## 故障排查
 
 ### 404 或 HTTP 错误
@@ -313,7 +358,7 @@ pnpm preview
 
 - 检查浏览器与 MediaMTX 之间的 UDP/TCP WebRTC 通路。
 - 检查 MediaMTX 公网/NAT 场景下的 ICE 地址发布配置。
-- 内网通常只需 STUN 或无需 TURN；跨公网/NAT 时可能需要 TURN。
+- 内网通常只需 STUN 或无需 TURN；跨公网/NAT 时可设置 `VITE_WEBRTC_TURN_MODE=fallback` 作为 TURN 兜底。
 - 确认 RTSP 源本身有视频轨道，并且 MediaMTX 能正常读取。
 
 ### 连接成功但画面黑屏

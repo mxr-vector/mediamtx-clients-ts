@@ -39,6 +39,16 @@ export type MediaMtxReceiverStatus =
   | "closed";
 
 /**
+ * WebRTC TURN 使用模式
+ *
+ * 控制环境变量中的 TURN 服务器何时参与 ICE 连接：
+ * - off: 不使用环境 TURN 配置，保持 STUN-only/default 行为
+ * - fallback: 先使用 STUN/default，失败后再使用 TURN 重试一次
+ * - include: 首次连接即包含 TURN 服务器
+ */
+export type MediaMtxTurnMode = "off" | "fallback" | "include";
+
+/**
  * MediaMTX 环境配置接口
  * 
  * 定义 MediaMTX 服务器的连接配置参数。
@@ -52,7 +62,10 @@ export type MediaMtxReceiverStatus =
  * @property streamPaths - 要连接的流路径列表
  * @property whepPathTemplate - WHEP 端点路径模板
  * @property requestTimeoutMs - 请求超时时间(毫秒)
- * @property iceServers - ICE 服务器配置(STUN/TURN)
+ * @property turnMode - TURN 使用模式
+ * @property stunIceServers - 不包含 TURN 的 ICE 服务器配置
+ * @property turnIceServers - 环境变量配置的 TURN 服务器配置
+ * @property iceServers - 当前模式下默认使用的 ICE 服务器配置
  */
 export interface MediaMtxEnvConfig {
   protocol: "http" | "https";
@@ -62,6 +75,9 @@ export interface MediaMtxEnvConfig {
   streamPaths: string[];
   whepPathTemplate: string;
   requestTimeoutMs: number;
+  turnMode?: MediaMtxTurnMode;
+  stunIceServers?: RTCIceServer[];
+  turnIceServers?: RTCIceServer[];
   iceServers: RTCIceServer[];
 }
 

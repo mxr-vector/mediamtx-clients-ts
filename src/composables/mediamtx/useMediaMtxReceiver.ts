@@ -130,6 +130,7 @@ export function useMediaMtxReceiver(options: UseMediaMtxReceiverOptions = {}): U
        */
       onStatusChange(nextStatus) {
         status.value = nextStatus;
+        peerConnection.value = nextReceiver.getPeerConnection();
         receiverOptions.onStatusChange?.(nextStatus);
       },
       /**

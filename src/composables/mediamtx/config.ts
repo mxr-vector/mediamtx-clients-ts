@@ -17,11 +17,15 @@
  * - VITE_MEDIAMTX_WHEP_PATH_TEMPLATE: WHEP 路径模板
  * - VITE_MEDIAMTX_REQUEST_TIMEOUT_MS: 请求超时时间
  * - VITE_WEBRTC_STUN_URLS: STUN 服务器 URL
+ * - VITE_WEBRTC_TURN_MODE: TURN 使用模式(off/fallback/include)
+ * - VITE_WEBRTC_TURN_URLS: TURN 服务器 URL
+ * - VITE_WEBRTC_TURN_USERNAME: TURN 用户名
+ * - VITE_WEBRTC_TURN_CREDENTIAL: TURN 凭证
  * 
  * @module config
  */
 
-import type { MediaMtxEndpointOptions, MediaMtxEnvConfig } from "./types";
+import type { MediaMtxEndpointOptions, MediaMtxEnvConfig, MediaMtxTurnMode } from "./types";
 
 /**
  * 默认配置
@@ -29,6 +33,8 @@ import type { MediaMtxEndpointOptions, MediaMtxEnvConfig } from "./types";
  * 当环境变量未设置时使用的默认值。
  * 这些值适用于本地开发环境。
  */
+const DEFAULT_STUN_ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+
 const DEFAULT_CONFIG: MediaMtxEnvConfig = {
   protocol: "http",
   host: "198.18.0.1",
@@ -37,7 +43,10 @@ const DEFAULT_CONFIG: MediaMtxEnvConfig = {
   streamPaths: ["camera1", "camera2"],
   whepPathTemplate: "/{path}/whep",
   requestTimeoutMs: 10_000,
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  turnMode: "off",
+  stunIceServers: DEFAULT_STUN_ICE_SERVERS,
+  turnIceServers: [],
+  iceServers: DEFAULT_STUN_ICE_SERVERS,
 };
 
 /**
@@ -98,17 +107,77 @@ function parseTimeout(value: string | undefined): number {
 }
 
 /**
- * 解析 ICE 服务器配置
- * 
+ * 解析 TURN 使用模式
+ *
+ * 只接受 off、fallback、include，其它值按 off 处理。
+ *
+ * @param value - TURN 模式字符串
+ * @returns TURN 使用模式
+ */
+function parseTurnMode(value: string | undefined): MediaMtxTurnMode {
+  return value === "fallback" || value === "include" ? value : "off";
+}
+
+/**
+ * 解析 STUN ICE 服务器配置
+ *
  * 将 STUN 服务器 URL 字符串转换为 RTCIceServer 数组。
  * 如果未配置则使用默认的 Google STUN 服务器。
- * 
+ *
  * @param value - STUN 服务器 URL 字符串(逗号分隔)
  * @returns RTCIceServer 数组
  */
-function parseIceServers(value: string | undefined): RTCIceServer[] {
+function parseStunIceServers(value: string | undefined): RTCIceServer[] {
   const urls = parseList(value);
-  return urls.length > 0 ? [{ urls }] : DEFAULT_CONFIG.iceServers;
+  return urls.length > 0 ? [{ urls }] : DEFAULT_CONFIG.stunIceServers;
+}
+
+/**
+ * 解析 TURN ICE 服务器配置
+ *
+ * 将 TURN 服务器 URL 和可选凭证转换为 RTCIceServer 数组。
+ * TURN 凭证是可选的，以兼容匿名 TURN 或特殊部署。
+ *
+ * @param urlsValue - TURN 服务器 URL 字符串(逗号分隔)
+ * @param username - TURN 用户名
+ * @param credential - TURN 凭证
+ * @returns RTCIceServer 数组
+ */
+function parseTurnIceServers(
+  urlsValue: string | undefined,
+  username: string | undefined,
+  credential: string | undefined
+): RTCIceServer[] {
+  const urls = parseList(urlsValue);
+  if (urls.length === 0) return [];
+
+  const server: RTCIceServer = { urls };
+  if (username && credential) {
+    server.username = username;
+    server.credential = credential;
+  }
+
+  return [server];
+}
+
+/**
+ * 根据 TURN 模式组合默认 ICE 服务器配置
+ *
+ * off 和 fallback 的初始默认配置都保持 STUN-only；include 会在首次连接中加入 TURN。
+ *
+ * @param turnMode - TURN 使用模式
+ * @param stunIceServers - STUN/default ICE 服务器
+ * @param turnIceServers - TURN ICE 服务器
+ * @returns 当前模式的默认 ICE 服务器数组
+ */
+function buildIceServers(
+  turnMode: MediaMtxTurnMode,
+  stunIceServers: RTCIceServer[],
+  turnIceServers: RTCIceServer[]
+): RTCIceServer[] {
+  return turnMode === "include" && turnIceServers.length > 0
+    ? [...stunIceServers, ...turnIceServers]
+    : stunIceServers;
 }
 
 /**
@@ -123,6 +192,13 @@ function parseIceServers(value: string | undefined): RTCIceServer[] {
 export function getMediaMtxConfig(overrides: Partial<MediaMtxEnvConfig> = {}): MediaMtxEnvConfig {
   const defaultPath = getEnv("VITE_MEDIAMTX_DEFAULT_PATH") ?? DEFAULT_CONFIG.defaultPath;
   const streamPaths = parseList(getEnv("VITE_MEDIAMTX_STREAM_PATHS"));
+  const turnMode = parseTurnMode(getEnv("VITE_WEBRTC_TURN_MODE"));
+  const stunIceServers = parseStunIceServers(getEnv("VITE_WEBRTC_STUN_URLS"));
+  const turnIceServers = parseTurnIceServers(
+    getEnv("VITE_WEBRTC_TURN_URLS"),
+    getEnv("VITE_WEBRTC_TURN_USERNAME"),
+    getEnv("VITE_WEBRTC_TURN_CREDENTIAL")
+  );
 
   return {
     protocol: parseProtocol(getEnv("VITE_MEDIAMTX_PROTOCOL")),
@@ -132,7 +208,10 @@ export function getMediaMtxConfig(overrides: Partial<MediaMtxEnvConfig> = {}): M
     streamPaths: streamPaths.length > 0 ? streamPaths : [defaultPath],
     whepPathTemplate: getEnv("VITE_MEDIAMTX_WHEP_PATH_TEMPLATE") ?? DEFAULT_CONFIG.whepPathTemplate,
     requestTimeoutMs: parseTimeout(getEnv("VITE_MEDIAMTX_REQUEST_TIMEOUT_MS")),
-    iceServers: parseIceServers(getEnv("VITE_WEBRTC_STUN_URLS")),
+    turnMode,
+    stunIceServers,
+    turnIceServers,
+    iceServers: buildIceServers(turnMode, stunIceServers, turnIceServers),
     ...overrides,
   };
 }
